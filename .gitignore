@@ -1,0 +1,10 @@
+# containerlab runtime directories
+clab-*/
+.clab*
+*.bak
+# vendor licenses and images are never committed
+license*.txt
+*.qcow2
+*.tar
+*.tar.gz
+__pycache__/

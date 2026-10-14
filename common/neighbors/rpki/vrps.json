@@ -1,0 +1,15 @@
+{
+  "metadata": {
+    "buildtime": "2026-01-01T00:00:00Z",
+    "vrps": 7
+  },
+  "roas": [
+    { "prefix": "45.10.0.0/16",      "maxLength": 16, "asn": "AS65536" },
+    { "prefix": "45.12.0.0/16",      "maxLength": 16, "asn": "AS65536" },
+    { "prefix": "45.20.0.0/16",      "maxLength": 16, "asn": "AS64497" },
+    { "prefix": "45.30.0.0/16",      "maxLength": 16, "asn": "AS64499" },
+    { "prefix": "203.0.113.0/24",    "maxLength": 24, "asn": "AS64500" },
+    { "prefix": "198.51.100.0/24",   "maxLength": 24, "asn": "AS64511" },
+    { "prefix": "2001:db8:500::/40", "maxLength": 40, "asn": "AS64500" }
+  ]
+}
