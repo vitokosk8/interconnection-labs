@@ -146,10 +146,12 @@ set / network-instance default static-routes route 2001:db8:500::/40 next-hop-gr
 # ---------------------------------------------------------------------
 # 6. Policy objects (Lessons 3.2-3.7, 4.2)
 # ---------------------------------------------------------------------
-set / routing-policy prefix-set BAD-LENGTH prefix 0.0.0.0/0 mask-length-range 0..7
-set / routing-policy prefix-set BAD-LENGTH prefix 0.0.0.0/0 mask-length-range 25..32
-set / routing-policy prefix-set BAD-LENGTH prefix ::/0 mask-length-range 0..15
-set / routing-policy prefix-set BAD-LENGTH prefix ::/0 mask-length-range 49..128
+# SR Linux accepts each ip-prefix only once per prefix-set, so the too-short
+# and too-long ranges of 0.0.0.0/0 and ::/0 live in two separate sets.
+set / routing-policy prefix-set TOO-SHORT prefix 0.0.0.0/0 mask-length-range 0..7
+set / routing-policy prefix-set TOO-SHORT prefix ::/0 mask-length-range 0..15
+set / routing-policy prefix-set TOO-LONG prefix 0.0.0.0/0 mask-length-range 25..32
+set / routing-policy prefix-set TOO-LONG prefix ::/0 mask-length-range 49..128
 
 set / routing-policy prefix-set BOGONS prefix 0.0.0.0/8 mask-length-range 8..32
 set / routing-policy prefix-set BOGONS prefix 10.0.0.0/8 mask-length-range 8..32
@@ -219,8 +221,10 @@ set / routing-policy community-set DNA-64510 member [ 64500:10:64510 ]
 #    import chain: SANITY-IN [NO-TRANSIT-ASN] <SESSION>-IN
 #    Statements are evaluated in configuration order.
 # ---------------------------------------------------------------------
-set / routing-policy policy SANITY-IN statement 010-bad-length match prefix prefix-set BAD-LENGTH
-set / routing-policy policy SANITY-IN statement 010-bad-length action policy-result reject
+set / routing-policy policy SANITY-IN statement 010-too-short match prefix prefix-set TOO-SHORT
+set / routing-policy policy SANITY-IN statement 010-too-short action policy-result reject
+set / routing-policy policy SANITY-IN statement 011-too-long match prefix prefix-set TOO-LONG
+set / routing-policy policy SANITY-IN statement 011-too-long action policy-result reject
 set / routing-policy policy SANITY-IN statement 020-bogons match prefix prefix-set BOGONS
 set / routing-policy policy SANITY-IN statement 020-bogons action policy-result reject
 # PRODUCTION: un-comment
