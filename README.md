@@ -8,7 +8,7 @@ The same 28 checks are designed to run against nine platforms, so learners can c
 | Lab | DUT | Image | Status |
 | --- | --- | --- | --- |
 | `frr` | FRRouting 10.x | `quay.io/frrouting/frr` (public) | Validated: 28/28 (containerlab 0.74.3, FRR 10.2.1) |
-| `bird` | BIRD 2.17 | built locally from `common/images/bird` | Available - testing on containerlab |
+| `bird` | BIRD 2.17 | built locally from `common/images/bird` | Available - testing on containerlab (sessions without MD5) |
 | `srlinux` | Nokia SR Linux | `ghcr.io/nokia/srlinux` (public) | Planned |
 | `eos` | Arista cEOS | `ceos` - free download from arista.com | Planned |
 | `routeros` | MikroTik RouterOS v7.20+ | CHR built with [vrnetlab](https://github.com/srl-labs/vrnetlab) | Planned |
@@ -137,7 +137,7 @@ scripts/          deploy.sh, check.sh, destroy.sh
 
 - **Lab-only address space.** The 45.x.0.0/16 prefixes are real address space used only inside an isolated lab. Never connect the lab to the Internet.
 - **Documentation filters are disabled.** The lab is built on documentation prefixes and ASNs, so every DUT config ships with those filters commented out and marked `PRODUCTION`. Enable them on real networks.
-- **Authentication.** The neighbours use TCP-MD5 (`CHANGE-ME`) because FRR has no TCP-AO; the lab editions of the DUT configs do the same.
+- **No session authentication in the lab.** TCP-MD5 needs kernel support (`CONFIG_TCP_MD5SIG`), and the kernels of OrbStack and Docker Desktop do not have it. BIRD 2.17 refuses to start a session in that case ("Kernel does not support TCP MD5 signatures"); FRR silently runs the session *without* MD5. Rather than depend on the host kernel, the lab sessions run unauthenticated and every config shows the production line as a comment. The reference configurations keep TCP-MD5 / TCP-AO (Lesson 2.2). To check your host: `zcat /proc/config.gz 2>/dev/null | grep TCP_MD5 || grep TCP_MD5 /boot/config-$(uname -r)`.
 - **GTSM.** The FRR neighbours send TTL 255 (`ebgp-multihop 255`) and accept any TTL, so they work with DUTs with and without GTSM. The BIRD route servers enforce GTSM; SR Linux, which has no GTSM, reaches them with `multihop maximum-hops 255`.
 - **Editing bind-mounted files.** Editors that replace the file (`sed -i`, some `vim` settings) break Docker bind mounts: the container keeps the old file. Edit in place or redeploy.
 - **IXP LAN forwarding.** If the route-server sessions stay in `Connect`, Docker's `FORWARD DROP` policy is blocking the bridge; `deploy.sh` adds the `DOCKER-USER` rule that fixes it.
