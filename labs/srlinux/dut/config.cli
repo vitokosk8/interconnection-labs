@@ -251,25 +251,31 @@ set / routing-policy policy NO-TRANSIT-ASN default-action policy-result next-pol
 
 set / routing-policy policy TRANSIT-IN statement 010-gshut match bgp community-set GSHUT
 set / routing-policy policy TRANSIT-IN statement 010-gshut action policy-result accept
+set / routing-policy policy TRANSIT-IN statement 010-gshut action bgp local-preference operation set
 set / routing-policy policy TRANSIT-IN statement 010-gshut action bgp local-preference value 0
 set / routing-policy policy TRANSIT-IN statement 010-gshut action bgp communities add TAG-TRANSIT
 set / routing-policy policy TRANSIT-IN default-action policy-result accept
+set / routing-policy policy TRANSIT-IN default-action bgp local-preference operation set
 set / routing-policy policy TRANSIT-IN default-action bgp local-preference value 100
 set / routing-policy policy TRANSIT-IN default-action bgp communities add TAG-TRANSIT
 
 set / routing-policy policy PEER-IN statement 010-gshut match bgp community-set GSHUT
 set / routing-policy policy PEER-IN statement 010-gshut action policy-result accept
+set / routing-policy policy PEER-IN statement 010-gshut action bgp local-preference operation set
 set / routing-policy policy PEER-IN statement 010-gshut action bgp local-preference value 0
 set / routing-policy policy PEER-IN statement 010-gshut action bgp communities add TAG-PEER
 set / routing-policy policy PEER-IN default-action policy-result accept
+set / routing-policy policy PEER-IN default-action bgp local-preference operation set
 set / routing-policy policy PEER-IN default-action bgp local-preference value 250
 set / routing-policy policy PEER-IN default-action bgp communities add TAG-PEER
 
 set / routing-policy policy IXP-RS-IN statement 010-gshut match bgp community-set GSHUT
 set / routing-policy policy IXP-RS-IN statement 010-gshut action policy-result accept
+set / routing-policy policy IXP-RS-IN statement 010-gshut action bgp local-preference operation set
 set / routing-policy policy IXP-RS-IN statement 010-gshut action bgp local-preference value 0
 set / routing-policy policy IXP-RS-IN statement 010-gshut action bgp communities add TAG-RS
 set / routing-policy policy IXP-RS-IN default-action policy-result accept
+set / routing-policy policy IXP-RS-IN default-action bgp local-preference operation set
 set / routing-policy policy IXP-RS-IN default-action bgp local-preference value 200
 set / routing-policy policy IXP-RS-IN default-action bgp communities add TAG-RS
 
@@ -277,10 +283,12 @@ set / routing-policy policy IXP-RS-IN default-action bgp communities add TAG-RS
 set / routing-policy policy CUST-AS64511-IN statement 010-gshut match prefix prefix-set CUST-AS64511
 set / routing-policy policy CUST-AS64511-IN statement 010-gshut match bgp community-set GSHUT
 set / routing-policy policy CUST-AS64511-IN statement 010-gshut action policy-result accept
+set / routing-policy policy CUST-AS64511-IN statement 010-gshut action bgp local-preference operation set
 set / routing-policy policy CUST-AS64511-IN statement 010-gshut action bgp local-preference value 0
 set / routing-policy policy CUST-AS64511-IN statement 010-gshut action bgp communities add TAG-CUST
 set / routing-policy policy CUST-AS64511-IN statement 020-irr match prefix prefix-set CUST-AS64511
 set / routing-policy policy CUST-AS64511-IN statement 020-irr action policy-result accept
+set / routing-policy policy CUST-AS64511-IN statement 020-irr action bgp local-preference operation set
 set / routing-policy policy CUST-AS64511-IN statement 020-irr action bgp local-preference value 300
 set / routing-policy policy CUST-AS64511-IN statement 020-irr action bgp communities add TAG-CUST
 set / routing-policy policy CUST-AS64511-IN default-action policy-result reject
