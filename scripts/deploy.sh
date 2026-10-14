@@ -14,6 +14,17 @@ if [ "$VENDOR" = gobgp ]; then
   docker image inspect "${GOBGP_IMAGE:-ig/gobgp:latest}" >/dev/null 2>&1 || docker build -t ig/gobgp:latest common/images/gobgp
 fi
 
+# Vendor images that cannot be pulled from a public registry
+if [ "$VENDOR" = eos ]; then
+  IMG="${CEOS_IMAGE:-ceos:latest}"
+  if ! docker image inspect "$IMG" >/dev/null 2>&1; then
+    echo "cEOS image '$IMG' not found. Download cEOS-lab from arista.com"
+    echo "(cEOSarm-lab-*.tar.xz on Apple Silicon, cEOS64-lab-*.tar.xz on x86_64), then:"
+    echo "  docker import /path/to/cEOS*-lab-*.tar.xz $IMG"
+    exit 1
+  fi
+fi
+
 # 2. The IXP peering LAN is a Linux bridge on the host
 if ! ip link show br-ixp >/dev/null 2>&1; then
   sudo ip link add name br-ixp type bridge
