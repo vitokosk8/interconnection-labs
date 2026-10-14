@@ -1,0 +1,641 @@
+# =====================================================================
+# Interconnection Guidelines and Operational Best Practices
+# DUT - GoBGP 4.x - AS64500
+#
+# Lab edition: documentation-space and documentation-ASN filters are
+# disabled (marked PRODUCTION) because the lab itself uses them, and the
+# sessions run without TCP-MD5/TCP-AO (see the README).
+#
+# How GoBGP applies policy: for ordinary neighbours there is ONE import
+# and ONE export policy chain on the global RIB. The session is selected
+# inside the statements with neighbor-sets:
+#   import  - the neighbour the route came FROM
+#   export  - the neighbour the route is being sent TO
+# A statement without route-disposition applies its actions and falls
+# through to the next one; accept-route / reject-route stop evaluation.
+#
+# GoBGP is a BGP speaker, not a forwarding router: it does not install
+# routes in the kernel unless you connect it to zebra. For an edge
+# router that is a control-plane-only design (route server, route
+# reflector, controller) - here it is used to teach the policy logic.
+#
+# Own routes are originated by startup.sh (gobgp global rib add), which
+# also re-applies the import policy once the RPKI validators are in sync.
+#
+# Large community scheme (Unit 4):
+#   64500:1:1 own  64500:1:2 transit  64500:1:3 customer
+#   64500:1:4 private peer  64500:1:5 IXP route server
+#   64500:10:ASN customer action: do not announce to ASN
+# =====================================================================
+
+[global.config]
+  as = 64500
+  router-id = "203.0.113.1"
+
+  [global.apply-policy.config]
+    import-policy-list = ["IMPORT"]
+    default-import-policy = "reject-route"   # RFC 8212: nothing without policy
+    export-policy-list = ["EXPORT"]
+    default-export-policy = "reject-route"
+
+# ---- RPKI (Lesson 5.2, MANRS NO-4) ----------------------------------
+# Two independent validators. GoBGP marks every route Valid / Invalid /
+# NotFound; the IMPORT policy below drops the Invalid ones.
+[[rpki-servers]]
+  [rpki-servers.config]
+    address = "192.0.2.53"
+    port = 3323
+[[rpki-servers]]
+  [rpki-servers.config]
+    address = "192.0.2.54"
+    port = 3323
+
+# =====================================================================
+# Defined sets (Lessons 3.2-3.6)
+# =====================================================================
+
+# ---- Neighbour roles ------------------------------------------------
+[[defined-sets.neighbor-sets]]
+  neighbor-set-name = "TRANSIT"
+  neighbor-info-list = ["198.51.100.1", "2001:db8:100::1"]
+[[defined-sets.neighbor-sets]]
+  neighbor-set-name = "PEER-64497"
+  neighbor-info-list = ["198.51.100.9"]
+[[defined-sets.neighbor-sets]]
+  neighbor-set-name = "IXP-RS"
+  neighbor-info-list = ["192.0.2.1", "192.0.2.2"]
+[[defined-sets.neighbor-sets]]
+  neighbor-set-name = "CUST-64511"
+  neighbor-info-list = ["198.51.100.17"]
+# Everyone who must not send us transit routes
+[[defined-sets.neighbor-sets]]
+  neighbor-set-name = "NOT-TRANSIT"
+  neighbor-info-list = ["198.51.100.9", "192.0.2.1", "192.0.2.2", "198.51.100.17"]
+
+# ---- Prefix sets: IPv4 ----------------------------------------------
+# Prefix length sanity: shorter than /8 (includes the default route)
+# or longer than /24 (Lesson 3.2)
+[[defined-sets.prefix-sets]]
+  prefix-set-name = "V4-TOO-SHORT"
+  [[defined-sets.prefix-sets.prefix-list]]
+    ip-prefix = "0.0.0.0/0"
+    masklength-range = "0..7"
+[[defined-sets.prefix-sets]]
+  prefix-set-name = "V4-TOO-LONG"
+  [[defined-sets.prefix-sets.prefix-list]]
+    ip-prefix = "0.0.0.0/0"
+    masklength-range = "25..32"
+
+# Bogons (RFC 6890), any length inside them (Lesson 3.2)
+[[defined-sets.prefix-sets]]
+  prefix-set-name = "V4-BOGONS"
+  [[defined-sets.prefix-sets.prefix-list]]
+    ip-prefix = "0.0.0.0/8"
+    masklength-range = "8..32"
+  [[defined-sets.prefix-sets.prefix-list]]
+    ip-prefix = "10.0.0.0/8"
+    masklength-range = "8..32"
+  [[defined-sets.prefix-sets.prefix-list]]
+    ip-prefix = "100.64.0.0/10"
+    masklength-range = "10..32"
+  [[defined-sets.prefix-sets.prefix-list]]
+    ip-prefix = "127.0.0.0/8"
+    masklength-range = "8..32"
+  [[defined-sets.prefix-sets.prefix-list]]
+    ip-prefix = "169.254.0.0/16"
+    masklength-range = "16..32"
+  [[defined-sets.prefix-sets.prefix-list]]
+    ip-prefix = "172.16.0.0/12"
+    masklength-range = "12..32"
+  [[defined-sets.prefix-sets.prefix-list]]
+    ip-prefix = "192.0.0.0/24"
+    masklength-range = "24..32"
+  [[defined-sets.prefix-sets.prefix-list]]
+    ip-prefix = "192.168.0.0/16"
+    masklength-range = "16..32"
+  [[defined-sets.prefix-sets.prefix-list]]
+    ip-prefix = "198.18.0.0/15"
+    masklength-range = "15..32"
+  [[defined-sets.prefix-sets.prefix-list]]
+    ip-prefix = "224.0.0.0/4"
+    masklength-range = "4..32"
+  [[defined-sets.prefix-sets.prefix-list]]
+    ip-prefix = "240.0.0.0/4"
+    masklength-range = "4..32"
+
+# PRODUCTION: documentation ranges (RFC 5737), used by this lab
+[[defined-sets.prefix-sets]]
+  prefix-set-name = "V4-DOC"
+  [[defined-sets.prefix-sets.prefix-list]]
+    ip-prefix = "192.0.2.0/24"
+    masklength-range = "24..32"
+  [[defined-sets.prefix-sets.prefix-list]]
+    ip-prefix = "198.51.100.0/24"
+    masklength-range = "24..32"
+  [[defined-sets.prefix-sets.prefix-list]]
+    ip-prefix = "203.0.113.0/24"
+    masklength-range = "24..32"
+
+# Our own space and the IXP peering LANs we connect to (Lesson 3.4)
+[[defined-sets.prefix-sets]]
+  prefix-set-name = "V4-OWN"
+  [[defined-sets.prefix-sets.prefix-list]]
+    ip-prefix = "203.0.113.0/24"
+    masklength-range = "24..32"
+[[defined-sets.prefix-sets]]
+  prefix-set-name = "V4-IXP-LANS"
+  [[defined-sets.prefix-sets.prefix-list]]
+    ip-prefix = "192.0.2.0/24"
+    masklength-range = "24..32"
+
+# Customer prefix set: generated, never typed (Lessons 3.5, 7.5).
+# bgpq4 has no GoBGP output format: generate JSON (bgpq4 -j -A -m 24
+# -l CUST AS64511:AS-CUSTOMERS) and convert it with a small script.
+# PLACEHOLDER entry for the lab customer.
+[[defined-sets.prefix-sets]]
+  prefix-set-name = "CUST-64511-V4"
+  [[defined-sets.prefix-sets.prefix-list]]
+    ip-prefix = "198.51.100.0/24"
+    masklength-range = "24..24"
+
+# ---- Prefix sets: IPv6 ----------------------------------------------
+[[defined-sets.prefix-sets]]
+  prefix-set-name = "V6-TOO-SHORT"
+  [[defined-sets.prefix-sets.prefix-list]]
+    ip-prefix = "::/0"
+    masklength-range = "0..15"
+[[defined-sets.prefix-sets]]
+  prefix-set-name = "V6-TOO-LONG"
+  [[defined-sets.prefix-sets.prefix-list]]
+    ip-prefix = "::/0"
+    masklength-range = "49..128"
+# Global unicast space; anything outside 2000::/3 is rejected
+[[defined-sets.prefix-sets]]
+  prefix-set-name = "V6-GLOBAL"
+  [[defined-sets.prefix-sets.prefix-list]]
+    ip-prefix = "2000::/3"
+    masklength-range = "3..128"
+[[defined-sets.prefix-sets]]
+  prefix-set-name = "V6-BOGONS"
+  [[defined-sets.prefix-sets.prefix-list]]
+    ip-prefix = "2001:2::/48"
+    masklength-range = "48..128"
+  [[defined-sets.prefix-sets.prefix-list]]
+    ip-prefix = "2001:10::/28"
+    masklength-range = "28..128"
+  [[defined-sets.prefix-sets.prefix-list]]
+    ip-prefix = "2002::/16"
+    masklength-range = "16..128"
+  [[defined-sets.prefix-sets.prefix-list]]
+    ip-prefix = "3ffe::/16"
+    masklength-range = "16..128"
+# PRODUCTION: documentation ranges (RFC 3849, RFC 9637)
+[[defined-sets.prefix-sets]]
+  prefix-set-name = "V6-DOC"
+  [[defined-sets.prefix-sets.prefix-list]]
+    ip-prefix = "2001:db8::/32"
+    masklength-range = "32..128"
+  [[defined-sets.prefix-sets.prefix-list]]
+    ip-prefix = "3fff::/20"
+    masklength-range = "20..128"
+[[defined-sets.prefix-sets]]
+  prefix-set-name = "V6-OWN"
+  [[defined-sets.prefix-sets.prefix-list]]
+    ip-prefix = "2001:db8:500::/40"
+    masklength-range = "40..128"
+
+# ---- AS path sets (Lessons 3.3, 3.6) --------------------------------
+# GoBGP AS path sets are regular expressions; "_" matches a boundary.
+# Bogon ASNs: 0, 23456, 64512-65535, 65552-131071, 4200000000-4294967295
+[[defined-sets.bgp-defined-sets.as-path-sets]]
+  as-path-set-name = "BOGON-ASNS"
+  as-path-list = [
+    "_0_",
+    "_23456_",
+    "_(6451[2-9]|645[2-9][0-9]|64[6-9][0-9][0-9]|65[0-4][0-9][0-9]|655[0-2][0-9]|6553[0-5])_",
+    "_(6555[2-9]|655[6-9][0-9]|65[6-9][0-9][0-9]|6[6-9][0-9][0-9][0-9]|[7-9][0-9][0-9][0-9][0-9]|1[0-2][0-9][0-9][0-9][0-9]|130[0-9][0-9][0-9]|1310[0-6][0-9]|13107[0-1])_",
+    "_(42[0-8][0-9]{7}|429[0-3][0-9]{6}|4294[0-8][0-9]{5}|42949[0-5][0-9]{4}|429496[0-6][0-9]{3}|4294967[0-1][0-9]{2}|42949672[0-8][0-9]|429496729[0-5])_",
+  ]
+# PRODUCTION: documentation ASNs 64496-64511, 65536-65551 (RFC 5398)
+[[defined-sets.bgp-defined-sets.as-path-sets]]
+  as-path-set-name = "DOC-ASNS"
+  as-path-list = [
+    "_(6449[6-9]|6450[0-9]|6451[0-1])_",
+    "_(6553[6-9]|6554[0-9]|6555[0-1])_",
+  ]
+# Large transit networks: never expected behind a peer, an IXP member or
+# a customer (route leak, RFC 7908)
+[[defined-sets.bgp-defined-sets.as-path-sets]]
+  as-path-set-name = "TRANSIT-ASNS"
+  as-path-list = [
+    "_174_", "_701_", "_1299_", "_2914_", "_3257_", "_3320_", "_3356_",
+    "_3491_", "_5511_", "_6453_", "_6461_", "_6762_", "_6830_", "_7018_",
+    "_12956_",
+  ]
+
+# ---- Communities (Unit 4) -------------------------------------------
+[[defined-sets.bgp-defined-sets.community-sets]]
+  community-set-name = "GSHUT"
+  community-list = ["65535:0"]
+[[defined-sets.bgp-defined-sets.large-community-sets]]
+  large-community-set-name = "TAG-OWN"
+  large-community-list = ["64500:1:1"]
+[[defined-sets.bgp-defined-sets.large-community-sets]]
+  large-community-set-name = "TAG-CUST"
+  large-community-list = ["64500:1:3"]
+[[defined-sets.bgp-defined-sets.large-community-sets]]
+  large-community-set-name = "DNA-64496"
+  large-community-list = ["64500:10:64496"]
+[[defined-sets.bgp-defined-sets.large-community-sets]]
+  large-community-set-name = "DNA-64497"
+  large-community-list = ["64500:10:64497"]
+[[defined-sets.bgp-defined-sets.large-community-sets]]
+  large-community-set-name = "DNA-64510"
+  large-community-list = ["64500:10:64510"]
+
+# =====================================================================
+# IMPORT (Lessons 3.2-3.7, 4.2, 5.2, 7.1)
+# =====================================================================
+[[policy-definitions]]
+  name = "IMPORT"
+
+  # Locally originated routes (startup.sh) skip the sanity checks.
+  # "gobgp global rib" flags them RPKI Invalid (I): their AS path is
+  # still empty here. Peers receive them with origin AS64500 = Valid.
+  [[policy-definitions.statements]]
+    name = "000-local"
+    [policy-definitions.statements.conditions.bgp-conditions]
+      route-type = "local"
+    [policy-definitions.statements.actions]
+      route-disposition = "accept-route"
+
+  # -- Sanity, every session (MANRS NO-1) --
+  [[policy-definitions.statements]]
+    name = "010-v4-too-short"
+    [policy-definitions.statements.conditions.match-prefix-set]
+      prefix-set = "V4-TOO-SHORT"
+    [policy-definitions.statements.actions]
+      route-disposition = "reject-route"
+  [[policy-definitions.statements]]
+    name = "011-v4-too-long"
+    [policy-definitions.statements.conditions.match-prefix-set]
+      prefix-set = "V4-TOO-LONG"
+    [policy-definitions.statements.actions]
+      route-disposition = "reject-route"
+  [[policy-definitions.statements]]
+    name = "012-v4-bogon"
+    [policy-definitions.statements.conditions.match-prefix-set]
+      prefix-set = "V4-BOGONS"
+    [policy-definitions.statements.actions]
+      route-disposition = "reject-route"
+  # PRODUCTION: uncomment
+  # [[policy-definitions.statements]]
+  #   name = "013-v4-doc"
+  #   [policy-definitions.statements.conditions.match-prefix-set]
+  #     prefix-set = "V4-DOC"
+  #   [policy-definitions.statements.actions]
+  #     route-disposition = "reject-route"
+  [[policy-definitions.statements]]
+    name = "014-v4-own"
+    [policy-definitions.statements.conditions.match-prefix-set]
+      prefix-set = "V4-OWN"
+    [policy-definitions.statements.actions]
+      route-disposition = "reject-route"
+  [[policy-definitions.statements]]
+    name = "015-v4-ixp-lan"
+    [policy-definitions.statements.conditions.match-prefix-set]
+      prefix-set = "V4-IXP-LANS"
+    [policy-definitions.statements.actions]
+      route-disposition = "reject-route"
+
+  [[policy-definitions.statements]]
+    name = "020-v6-too-short"
+    [policy-definitions.statements.conditions.match-prefix-set]
+      prefix-set = "V6-TOO-SHORT"
+    [policy-definitions.statements.actions]
+      route-disposition = "reject-route"
+  [[policy-definitions.statements]]
+    name = "021-v6-too-long"
+    [policy-definitions.statements.conditions.match-prefix-set]
+      prefix-set = "V6-TOO-LONG"
+    [policy-definitions.statements.actions]
+      route-disposition = "reject-route"
+  [[policy-definitions.statements]]
+    name = "022-v6-not-global"
+    [policy-definitions.statements.conditions.match-prefix-set]
+      prefix-set = "V6-GLOBAL"
+      match-set-options = "invert"
+    [policy-definitions.statements.conditions.bgp-conditions]
+      afi-safi-in-list = ["ipv6-unicast"]
+    [policy-definitions.statements.actions]
+      route-disposition = "reject-route"
+  [[policy-definitions.statements]]
+    name = "023-v6-bogon"
+    [policy-definitions.statements.conditions.match-prefix-set]
+      prefix-set = "V6-BOGONS"
+    [policy-definitions.statements.actions]
+      route-disposition = "reject-route"
+  # PRODUCTION: uncomment
+  # [[policy-definitions.statements]]
+  #   name = "024-v6-doc"
+  #   [policy-definitions.statements.conditions.match-prefix-set]
+  #     prefix-set = "V6-DOC"
+  #   [policy-definitions.statements.actions]
+  #     route-disposition = "reject-route"
+  [[policy-definitions.statements]]
+    name = "025-v6-own"
+    [policy-definitions.statements.conditions.match-prefix-set]
+      prefix-set = "V6-OWN"
+    [policy-definitions.statements.actions]
+      route-disposition = "reject-route"
+
+  [[policy-definitions.statements]]
+    name = "030-bogon-asn"
+    [policy-definitions.statements.conditions.bgp-conditions.match-as-path-set]
+      as-path-set = "BOGON-ASNS"
+    [policy-definitions.statements.actions]
+      route-disposition = "reject-route"
+  # PRODUCTION: uncomment
+  # [[policy-definitions.statements]]
+  #   name = "031-doc-asn"
+  #   [policy-definitions.statements.conditions.bgp-conditions.match-as-path-set]
+  #     as-path-set = "DOC-ASNS"
+  #   [policy-definitions.statements.actions]
+  #     route-disposition = "reject-route"
+  [[policy-definitions.statements]]
+    name = "032-long-path"
+    [policy-definitions.statements.conditions.bgp-conditions.as-path-length]
+      operator = "ge"
+      value = 51
+    [policy-definitions.statements.actions]
+      route-disposition = "reject-route"
+
+  # RPKI ROV: drop Invalid, keep Valid and NotFound (Lesson 5.2)
+  [[policy-definitions.statements]]
+    name = "040-rpki-invalid"
+    [policy-definitions.statements.conditions.bgp-conditions]
+      rpki-validation-result = "invalid"
+    [policy-definitions.statements.actions]
+      route-disposition = "reject-route"
+
+  # -- Per-session rules --
+  # Route leaks: transit ASNs behind a peer, IXP member or customer (3.6)
+  [[policy-definitions.statements]]
+    name = "050-transit-asn-leak"
+    [policy-definitions.statements.conditions.match-neighbor-set]
+      neighbor-set = "NOT-TRANSIT"
+    [policy-definitions.statements.conditions.bgp-conditions.match-as-path-set]
+      as-path-set = "TRANSIT-ASNS"
+    [policy-definitions.statements.actions]
+      route-disposition = "reject-route"
+  # Customer: only prefixes in the IRR-generated set (3.5, MANRS NO-1)
+  [[policy-definitions.statements]]
+    name = "051-cust-not-irr"
+    [policy-definitions.statements.conditions.match-neighbor-set]
+      neighbor-set = "CUST-64511"
+    [policy-definitions.statements.conditions.match-prefix-set]
+      prefix-set = "CUST-64511-V4"
+      match-set-options = "invert"
+    [policy-definitions.statements.actions]
+      route-disposition = "reject-route"
+
+  # Scrub our informational communities 64500:1:* on every session, so
+  # nobody can make us treat their route as ours or a customer's (3.7).
+  # No route-disposition: actions apply and evaluation continues.
+  [[policy-definitions.statements]]
+    name = "060-scrub"
+    [policy-definitions.statements.actions.bgp-actions.set-large-community]
+      options = "remove"
+      [policy-definitions.statements.actions.bgp-actions.set-large-community.set-large-community-method]
+        communities-list = ['^64500:1:[0-9]+$']
+
+  # Tag and prefer per relationship (4.2): customer > peer > IXP > transit
+  [[policy-definitions.statements]]
+    name = "070-transit"
+    [policy-definitions.statements.conditions.match-neighbor-set]
+      neighbor-set = "TRANSIT"
+    [policy-definitions.statements.actions.bgp-actions]
+      set-local-pref = 100
+      [policy-definitions.statements.actions.bgp-actions.set-large-community]
+        options = "add"
+        [policy-definitions.statements.actions.bgp-actions.set-large-community.set-large-community-method]
+          communities-list = ["64500:1:2"]
+  [[policy-definitions.statements]]
+    name = "071-peer"
+    [policy-definitions.statements.conditions.match-neighbor-set]
+      neighbor-set = "PEER-64497"
+    [policy-definitions.statements.actions.bgp-actions]
+      set-local-pref = 250
+      [policy-definitions.statements.actions.bgp-actions.set-large-community]
+        options = "add"
+        [policy-definitions.statements.actions.bgp-actions.set-large-community.set-large-community-method]
+          communities-list = ["64500:1:4"]
+  [[policy-definitions.statements]]
+    name = "072-ixp-rs"
+    [policy-definitions.statements.conditions.match-neighbor-set]
+      neighbor-set = "IXP-RS"
+    [policy-definitions.statements.actions.bgp-actions]
+      set-local-pref = 200
+      [policy-definitions.statements.actions.bgp-actions.set-large-community]
+        options = "add"
+        [policy-definitions.statements.actions.bgp-actions.set-large-community.set-large-community-method]
+          communities-list = ["64500:1:5"]
+  [[policy-definitions.statements]]
+    name = "073-customer"
+    [policy-definitions.statements.conditions.match-neighbor-set]
+      neighbor-set = "CUST-64511"
+    [policy-definitions.statements.actions.bgp-actions]
+      set-local-pref = 300
+      [policy-definitions.statements.actions.bgp-actions.set-large-community]
+        options = "add"
+        [policy-definitions.statements.actions.bgp-actions.set-large-community.set-large-community-method]
+          communities-list = ["64500:1:3"]
+
+  # Graceful shutdown received (RFC 8326, Lesson 7.1)
+  [[policy-definitions.statements]]
+    name = "080-gshut"
+    [policy-definitions.statements.conditions.bgp-conditions.match-community-set]
+      community-set = "GSHUT"
+    [policy-definitions.statements.actions.bgp-actions]
+      set-local-pref = 0
+
+  [[policy-definitions.statements]]
+    name = "090-accept"
+    [policy-definitions.statements.actions]
+      route-disposition = "accept-route"
+
+# =====================================================================
+# EXPORT (Lessons 4.3, 4.4, 4.6)
+# The neighbor-set here is the neighbour we are sending TO.
+# =====================================================================
+[[policy-definitions]]
+  name = "EXPORT"
+
+  # Maintenance (Lesson 7.1): to drain a session, uncomment and point
+  # the neighbor-set at it, reload (SIGHUP or restart), work, then undo.
+  # [[policy-definitions.statements]]
+  #   name = "000-maint-gshut"
+  #   [policy-definitions.statements.conditions.match-neighbor-set]
+  #     neighbor-set = "TRANSIT"
+  #   [policy-definitions.statements.actions.bgp-actions.set-community]
+  #     options = "add"
+  #     [policy-definitions.statements.actions.bgp-actions.set-community.set-community-method]
+  #       communities-list = ["65535:0"]
+
+  # Customers get the full table
+  [[policy-definitions.statements]]
+    name = "010-to-customer"
+    [policy-definitions.statements.conditions.match-neighbor-set]
+      neighbor-set = "CUST-64511"
+    [policy-definitions.statements.actions]
+      route-disposition = "accept-route"
+
+  # Customer action communities: "do not announce to ASN" (Lesson 4.6)
+  [[policy-definitions.statements]]
+    name = "020-dna-64496"
+    [policy-definitions.statements.conditions.match-neighbor-set]
+      neighbor-set = "TRANSIT"
+    [policy-definitions.statements.conditions.bgp-conditions.match-large-community-set]
+      large-community-set = "DNA-64496"
+    [policy-definitions.statements.actions]
+      route-disposition = "reject-route"
+  [[policy-definitions.statements]]
+    name = "021-dna-64497"
+    [policy-definitions.statements.conditions.match-neighbor-set]
+      neighbor-set = "PEER-64497"
+    [policy-definitions.statements.conditions.bgp-conditions.match-large-community-set]
+      large-community-set = "DNA-64497"
+    [policy-definitions.statements.actions]
+      route-disposition = "reject-route"
+  [[policy-definitions.statements]]
+    name = "022-dna-64510"
+    [policy-definitions.statements.conditions.match-neighbor-set]
+      neighbor-set = "IXP-RS"
+    [policy-definitions.statements.conditions.bgp-conditions.match-large-community-set]
+      large-community-set = "DNA-64510"
+    [policy-definitions.statements.actions]
+      route-disposition = "reject-route"
+
+  # Transit, peers and IXP: own and customer routes only, recognised by
+  # the tags set on import / origination (Lessons 4.3, 4.4, MANRS NO-1)
+  [[policy-definitions.statements]]
+    name = "030-own"
+    [policy-definitions.statements.conditions.bgp-conditions.match-large-community-set]
+      large-community-set = "TAG-OWN"
+    [policy-definitions.statements.actions]
+      route-disposition = "accept-route"
+  [[policy-definitions.statements]]
+    name = "031-customer"
+    [policy-definitions.statements.conditions.bgp-conditions.match-large-community-set]
+      large-community-set = "TAG-CUST"
+    [policy-definitions.statements.actions]
+      route-disposition = "accept-route"
+  # anything else: default-export-policy = reject-route
+
+# =====================================================================
+# Sessions (Lessons 2.1-2.5, 6.1)
+# Lab: no TCP-MD5 (see README). Production: auth-password = "key" in
+# neighbors.config, or TCP-AO (neighbors.tcp-ao, recent GoBGP), Lesson 2.2
+# GTSM (RFC 5082): ttl-security with ttl-min 255.
+# RFC 9234 roles: not supported by GoBGP, the export policy is the only
+# leak protection here.
+# =====================================================================
+[[neighbors]]
+  [neighbors.config]
+    neighbor-address = "198.51.100.1"
+    peer-as = 64496
+    description = "TRANSIT-A"
+  [neighbors.transport.config]
+    local-address = "198.51.100.2"
+  [neighbors.ttl-security.config]
+    enabled = true
+    ttl-min = 255
+  [[neighbors.afi-safis]]
+    [neighbors.afi-safis.config]
+      afi-safi-name = "ipv4-unicast"
+    [neighbors.afi-safis.prefix-limit.config]
+      max-prefixes = 1100000
+      shutdown-threshold-pct = 90
+
+[[neighbors]]
+  [neighbors.config]
+    neighbor-address = "2001:db8:100::1"
+    peer-as = 64496
+    description = "TRANSIT-A-V6"
+  [neighbors.transport.config]
+    local-address = "2001:db8:100::2"
+  [neighbors.ttl-security.config]
+    enabled = true
+    ttl-min = 255
+  [[neighbors.afi-safis]]
+    [neighbors.afi-safis.config]
+      afi-safi-name = "ipv6-unicast"
+    [neighbors.afi-safis.prefix-limit.config]
+      max-prefixes = 250000
+      shutdown-threshold-pct = 90
+
+[[neighbors]]
+  [neighbors.config]
+    neighbor-address = "198.51.100.9"
+    peer-as = 64497
+    description = "PEER-AS64497"
+  [neighbors.transport.config]
+    local-address = "198.51.100.10"
+  [neighbors.ttl-security.config]
+    enabled = true
+    ttl-min = 255
+  [[neighbors.afi-safis]]
+    [neighbors.afi-safis.config]
+      afi-safi-name = "ipv4-unicast"
+    [neighbors.afi-safis.prefix-limit.config]
+      max-prefixes = 1200
+
+# IXP route servers: they do not prepend their ASN, and GoBGP does not
+# enforce the first AS, so no extra setting is needed (Lesson 6.1)
+[[neighbors]]
+  [neighbors.config]
+    neighbor-address = "192.0.2.1"
+    peer-as = 64510
+    description = "IXP-RS1"
+  [neighbors.transport.config]
+    local-address = "192.0.2.50"
+  [neighbors.ttl-security.config]
+    enabled = true
+    ttl-min = 255
+  [[neighbors.afi-safis]]
+    [neighbors.afi-safis.config]
+      afi-safi-name = "ipv4-unicast"
+    [neighbors.afi-safis.prefix-limit.config]
+      max-prefixes = 250000
+
+[[neighbors]]
+  [neighbors.config]
+    neighbor-address = "192.0.2.2"
+    peer-as = 64510
+    description = "IXP-RS2"
+  [neighbors.transport.config]
+    local-address = "192.0.2.50"
+  [neighbors.ttl-security.config]
+    enabled = true
+    ttl-min = 255
+  [[neighbors.afi-safis]]
+    [neighbors.afi-safis.config]
+      afi-safi-name = "ipv4-unicast"
+    [neighbors.afi-safis.prefix-limit.config]
+      max-prefixes = 250000
+
+[[neighbors]]
+  [neighbors.config]
+    neighbor-address = "198.51.100.17"
+    peer-as = 64511
+    description = "CUST-AS64511"
+  [neighbors.transport.config]
+    local-address = "198.51.100.18"
+  [neighbors.ttl-security.config]
+    enabled = true
+    ttl-min = 255
+  [[neighbors.afi-safis]]
+    [neighbors.afi-safis.config]
+      afi-safi-name = "ipv4-unicast"
+    [neighbors.afi-safis.prefix-limit.config]
+      max-prefixes = 50

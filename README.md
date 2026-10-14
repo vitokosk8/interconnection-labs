@@ -3,12 +3,13 @@
 Hands-on labs for the course **Interconnection Guidelines and Operational Best Practices**.
 Every lab puts one router under test (the **DUT**, AS64500) in the same neighbourhood: a transit provider, a private peer, an IXP with two route servers, a customer and two RPKI validators. The neighbours announce legitimate routes **and trap routes** (bogons, RPKI Invalids, leaks, more-specifics of your own space…). A vendor-neutral script then checks what the DUT accepted and what it announced.
 
-The same 28 checks are designed to run against nine platforms, so learners can compare how each vendor implements the same MANRS-aligned policy.
+The same 28 checks are designed to run against ten platforms, so learners can compare how each vendor implements the same MANRS-aligned policy.
 
 | Lab | DUT | Image | Status |
 | --- | --- | --- | --- |
 | `frr` | FRRouting 10.x | `quay.io/frrouting/frr` (public) | Validated: 28/28 (containerlab 0.74.3, FRR 10.2.1) |
 | `bird` | BIRD 2.17 | built locally from `common/images/bird` | Validated: 28/28 (containerlab 0.74.3, BIRD 2.17.5) |
+| `gobgp` | GoBGP 4.x | built locally from `common/images/gobgp` | Available - testing on containerlab |
 | `srlinux` | Nokia SR Linux | `ghcr.io/nokia/srlinux` (public) | Validated: 27/28 + 1 GAP, no ROV (containerlab 0.74.3, SR Linux 26.7.2) |
 | `eos` | Arista cEOS | `ceos` - free download from arista.com | Planned |
 | `routeros` | MikroTik RouterOS v7.20+ | CHR built with [vrnetlab](https://github.com/srl-labs/vrnetlab) | Planned |
@@ -48,10 +49,11 @@ curl -sL https://containerlab.dev/setup | sudo -E bash -s "all"   # Docker + con
 sudo usermod -aG docker $USER && exit                            # then: orb -m clab
 ```
 
-On Apple Silicon only the container-native labs run (FRR, BIRD, SR Linux, cEOS); the VM-based images (RouterOS, IOS XE, IOS XR, Junos, SR OS) need an x86_64 Linux host.
+On Apple Silicon only the container-native labs run (FRR, BIRD, GoBGP, SR Linux, cEOS); the VM-based images (RouterOS, IOS XE, IOS XR, Junos, SR OS) need an x86_64 Linux host.
 
 ```bash
-git clone <this repository> && cd interconnection-labs
+git clone https://github.com/vitokosk8/interconnection-labs.git
+cd interconnection-labs
 scripts/deploy.sh frr        # builds the BIRD and RTR images the first time
 scripts/check.sh frr         # 28 checks, PASS / FAIL / GAP
 scripts/destroy.sh frr       # add --all to also remove the br-ixp bridge
@@ -71,6 +73,7 @@ FRR_IMAGE=quay.io/frrouting/frr:10.3.1 scripts/deploy.sh frr
 | --- | --- |
 | `FRR_IMAGE` | `quay.io/frrouting/frr:10.2.1` |
 | `BIRD_IMAGE` / `RPKI_IMAGE` | `ig/bird:latest` / `ig/rpki:latest` (built by `deploy.sh`) |
+| `GOBGP_IMAGE` | `ig/gobgp:latest` (built by `deploy.sh gobgp`, GoBGP 4.10.0) |
 
 ## What is tested
 
@@ -116,7 +119,7 @@ The peer's route 45.20.0.0/16 carries a **fake customer tag** (64500:1:3). It mu
 ## Suggested exercises
 
 1. **Break it on purpose.** Remove the sanity call from the transit import policy, reload and re-run the checks. Watch which IMP-* checks turn red.
-2. **RPKI re-evaluation (Lesson 5.2).** Deploy with the validators stopped (`docker stop clab-ig-<vendor>-rpki1 clab-ig-<vendor>-rpki2`), let BGP converge, start them again, then run the checks. Does IMP-RPKI-INVALID pass without a manual refresh? FRR 8.x needed `clear bgp * soft in`; BIRD re-evaluates automatically thanks to `import table on`.
+2. **RPKI re-evaluation (Lesson 5.2).** Deploy with the validators stopped (`docker stop clab-ig-<vendor>-rpki1 clab-ig-<vendor>-rpki2`), let BGP converge, start them again, then run the checks. Does IMP-RPKI-INVALID pass without a manual refresh? FRR 8.x needed `clear bgp * soft in`; BIRD re-evaluates automatically thanks to `import table on`; GoBGP does not re-evaluate at all and needs `gobgp neighbor all softresetin` (its `startup.sh` does this once the validators are in sync - try it without).
 3. **Roles as a safety net (Lesson 4.5).** On FRR or BIRD, open the export filter towards the peer (`accept` everything) and re-run the checks. The transit routes still do not reach the peer: RFC 9234 roles and the OTC attribute stop them.
 4. **Graceful shutdown (Lesson 7.1).** Drain the DUT with the maintenance command shown at the end of its configuration and look at the local preference of the DUT's routes on transit.
 5. **Generate the customer filter.** Replace the placeholder customer list with real `bgpq4` output for an as-set of your choice and adapt `customer/frr.conf`.
@@ -126,7 +129,7 @@ The peer's route 45.20.0.0/16 carries a **fake customer tag** (64500:1:3). It mu
 ```
 common/
   neighbors/     transit, peer, customer, member-a (FRR); rs1, rs2 (BIRD); rpki VRPs
-  images/        Dockerfiles for the BIRD and StayRTR images
+  images/        Dockerfiles for the BIRD, StayRTR and GoBGP images
   tests/check.py vendor-neutral checks (Python 3 standard library only)
 labs/<vendor>/
   <vendor>.clab.yml   topology (identical neighbours, vendor-specific DUT)
