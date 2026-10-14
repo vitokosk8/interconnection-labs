@@ -11,7 +11,7 @@ The same 28 checks are designed to run against ten platforms, so learners can co
 | `bird` | BIRD 2.17 | built locally from `common/images/bird` | Validated: 28/28 (containerlab 0.74.3, BIRD 2.17.5) |
 | `gobgp` | GoBGP 4.x | built locally from `common/images/gobgp` | Validated: 28/28 (containerlab 0.74.3, GoBGP 4.10.0) |
 | `srlinux` | Nokia SR Linux | `ghcr.io/nokia/srlinux` (public) | Validated: 27/28 + 1 GAP, no ROV (containerlab 0.74.3, SR Linux 26.7.2) |
-| `eos` | Arista cEOS | `ceos` - free download from arista.com | Planned |
+| `eos` | Arista cEOS | `ceos` - free download from arista.com | Available - testing on containerlab |
 | `routeros` | MikroTik RouterOS v7.20+ | CHR built with [vrnetlab](https://github.com/srl-labs/vrnetlab) | Planned |
 | `junos` | Juniper Junos | vJunos-router built with vrnetlab | Planned |
 | `iosxe` | Cisco IOS XE | Catalyst 8000v built with vrnetlab | Planned |
@@ -73,7 +73,19 @@ FRR_IMAGE=quay.io/frrouting/frr:10.3.1 scripts/deploy.sh frr
 | --- | --- |
 | `FRR_IMAGE` | `quay.io/frrouting/frr:10.2.1` |
 | `BIRD_IMAGE` / `RPKI_IMAGE` | `ig/bird:latest` / `ig/rpki:latest` (built by `deploy.sh`) |
+| `CEOS_IMAGE` | `ceos:latest` - import it yourself, see below |
 | `GOBGP_IMAGE` | `ig/gobgp:latest` (built by `deploy.sh gobgp`, GoBGP 4.10.0) |
+
+### Arista cEOS image
+
+cEOS is free but needs an arista.com account: Software Downloads, EOS, cEOS-lab. On Apple Silicon take the `cEOSarm-lab-<version>.tar.xz` build, on x86_64 `cEOS64-lab-<version>.tar.xz`. Import it inside the Linux VM:
+
+```bash
+docker import cEOS*-lab-*.tar.xz ceos:latest      # or any tag, then CEOS_IMAGE=ceos:<tag>
+scripts/deploy.sh eos
+```
+
+cEOS takes 1-2 minutes to boot before BGP starts.
 
 ## What is tested
 
