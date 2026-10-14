@@ -117,12 +117,12 @@ set / acl acl-filter CPM type ipv4 entry 12 match ipv4 protocol tcp
 set / acl acl-filter CPM type ipv4 entry 12 match transport destination-port value 179
 set / acl acl-filter CPM type ipv4 entry 12 action drop
 # lab: NOT bound, it would replace the default CPM filter and cut
-# containerlab's own management access. Production: merge, then bind:
+# the containerlab own management access. Production: merge, then bind:
 # set / system control-plane-traffic input acl acl-filter CPM type ipv4
 
 # ---------------------------------------------------------------------
 # 4. Anti-spoofing on the single-homed customer edge (Lesson 5.6, MANRS NO-2)
-#    Input ACL with the customer's prefixes (same IRR data as the BGP filter)
+#    Input ACL with the customer prefixes (same IRR data as the BGP filter)
 # ---------------------------------------------------------------------
 set / acl acl-filter CUST-AS64511-SRC type ipv4 entry 10 match ipv4 source-ip prefix 198.51.100.16/30
 set / acl acl-filter CUST-AS64511-SRC type ipv4 entry 10 action accept
@@ -301,7 +301,7 @@ set / routing-policy policy CUST-AS64511-IN default-action policy-result reject
 # 8. Outbound policies (Lessons 4.3, 4.4, 4.6, 6.4, 7.1)
 #    export chain: MAINT-GSHUT only while draining, then DNA-ASN, then UPSTREAM-OUT
 # ---------------------------------------------------------------------
-# Maintenance: put MAINT-GSHUT first in a group's export chain to drain
+# Maintenance: put MAINT-GSHUT first in the export chain of a group to drain
 # it (RFC 8326), remove it after the work.
 set / routing-policy policy MAINT-GSHUT statement 010-all action policy-result next-policy
 set / routing-policy policy MAINT-GSHUT statement 010-all action bgp communities add GSHUT
