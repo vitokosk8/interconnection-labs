@@ -87,6 +87,8 @@ scripts/deploy.sh eos
 
 cEOS takes 1-2 minutes to boot before BGP starts.
 
+Check the build after the first deploy: `docker exec clab-ig-eos-dut Cli -c "show version" | grep Architecture` must say `aarch64` on Apple Silicon. An x86 image (`i686` / `x86_64`) still starts under emulation, but its forwarding agent crashes and all Ethernet ports stay down ("BGP inactive"). `docker image inspect` does not help here: `docker import` labels the image with the host architecture whatever it contains. `scripts/check.sh eos` warns about this.
+
 ## What is tested
 
 The DUT is never queried directly. The **customer** receives the DUT's full table, so it shows everything the DUT accepted. **Transit, peer and member-a** show what the DUT announced.
