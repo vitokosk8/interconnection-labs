@@ -4,7 +4,7 @@
 #     the keychains are kept, commented, as the production example
 #   - CPM filter defined but not bound (keeps management access)
 #   - multihop 255 towards the route servers (they enforce GTSM)
-#   - known gap: no RPKI ROV on SR Linux -> see known-gaps.txt
+#   - known gap: no RPKI ROV on SR Linux, see known-gaps.txt
 # =====================================================================
 # =====================================================================
 # Interconnection Guidelines and Operational Best Practices
@@ -13,7 +13,7 @@
 #
 # DOCUMENTATION-ONLY RESOURCES (RFC 5737 / RFC 3849 / RFC 5398).
 # Adapt before use. Validate in a lab (containerlab, ghcr.io/nokia/srlinux).
-# Load with:  enter candidate private  ->  paste  ->  diff  ->  commit now
+# Load with: enter candidate private, paste, diff, commit now
 #
 # Topology (same as the other reference configurations)
 #   AS64500 (us)            own: 203.0.113.0/24, 2001:db8:500::/40
@@ -25,7 +25,7 @@
 # Large community scheme (Unit 4)
 #   64500:1:1 own  64500:1:2 transit  64500:1:3 customer
 #   64500:1:4 private peer  64500:1:5 IXP route server
-#   64500:10:<asn> customer action: do not announce to <asn>
+#   64500:10:ASN customer action: do not announce to ASN
 #
 # SR Linux notes - what the 26.7 BGP model does NOT have:
 #   - RPKI / Route Origin Validation: no RTR client and no
@@ -126,7 +126,7 @@ set / acl acl-filter CPM type ipv4 entry 12 action drop
 # ---------------------------------------------------------------------
 set / acl acl-filter CUST-AS64511-SRC type ipv4 entry 10 match ipv4 source-ip prefix 198.51.100.16/30
 set / acl acl-filter CUST-AS64511-SRC type ipv4 entry 10 action accept
-# set / acl acl-filter CUST-AS64511-SRC type ipv4 entry 20 match ipv4 source-ip prefix <customer prefix>
+# set / acl acl-filter CUST-AS64511-SRC type ipv4 entry 20 match ipv4 source-ip prefix CUSTOMER-PREFIX
 # set / acl acl-filter CUST-AS64511-SRC type ipv4 entry 20 action accept
 set / acl acl-filter CUST-AS64511-SRC type ipv4 entry 1000 action drop
 set / acl interface ethernet-1/4.0 interface-ref interface ethernet-1/4
@@ -218,7 +218,7 @@ set / routing-policy community-set DNA-64510 member [ 64500:10:64510 ]
 
 # ---------------------------------------------------------------------
 # 7. Inbound policies (Lessons 3.1-3.7, 4.2, 7.1)
-#    import chain: SANITY-IN [NO-TRANSIT-ASN] <SESSION>-IN
+#    import chain: SANITY-IN, then NO-TRANSIT-ASN where used, then the session policy
 #    Statements are evaluated in configuration order.
 # ---------------------------------------------------------------------
 set / routing-policy policy SANITY-IN statement 010-too-short match prefix prefix-set TOO-SHORT
@@ -299,12 +299,13 @@ set / routing-policy policy CUST-AS64511-IN default-action policy-result reject
 
 # ---------------------------------------------------------------------
 # 8. Outbound policies (Lessons 4.3, 4.4, 4.6, 6.4, 7.1)
-#    export chain: [MAINT-GSHUT] DNA-<asn> UPSTREAM-OUT
+#    export chain: MAINT-GSHUT only while draining, then DNA-ASN, then UPSTREAM-OUT
 # ---------------------------------------------------------------------
 # Maintenance: put MAINT-GSHUT first in a group's export chain to drain
 # it (RFC 8326), remove it after the work.
+set / routing-policy policy MAINT-GSHUT statement 010-all action policy-result next-policy
+set / routing-policy policy MAINT-GSHUT statement 010-all action bgp communities add GSHUT
 set / routing-policy policy MAINT-GSHUT default-action policy-result next-policy
-set / routing-policy policy MAINT-GSHUT default-action bgp communities add GSHUT
 
 set / routing-policy policy DNA-64496 statement 010 match bgp community-set DNA-64496
 set / routing-policy policy DNA-64496 statement 010 action policy-result reject
