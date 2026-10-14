@@ -24,7 +24,14 @@ if command -v iptables >/dev/null && sudo iptables -L DOCKER-USER >/dev/null 2>&
 fi
 
 # 3. Deploy
-sudo -E containerlab deploy -t "$TOPO" --reconfigure
+# sudo drops the environment on many systems (sudo -E is often refused),
+# so pass the image overrides to containerlab explicitly.
+ENV_PASS=()
+for v in FRR_IMAGE BIRD_IMAGE RPKI_IMAGE SRL_IMAGE CEOS_IMAGE ROS_IMAGE XRD_IMAGE \
+         C8KV_IMAGE SROS_IMAGE SROS_LICENSE VJUNOS_IMAGE; do
+  [ -n "${!v:-}" ] && ENV_PASS+=("$v=${!v}")
+done
+sudo env "${ENV_PASS[@]}" containerlab deploy -t "$TOPO" --reconfigure
 echo
 echo "Wait until the DUT has booted and its BGP sessions are up (VM-based"
 echo "images can take several minutes), then run:  scripts/check.sh $VENDOR"

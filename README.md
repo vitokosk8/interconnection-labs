@@ -7,8 +7,8 @@ The same 28 checks are designed to run against nine platforms, so learners can c
 
 | Lab | DUT | Image | Status |
 | --- | --- | --- | --- |
-| `frr` | FRRouting 10.x | `quay.io/frrouting/frr` (public) | Available - testing on containerlab |
-| `bird` | BIRD 2.17 | built locally from `common/images/bird` | Coming next |
+| `frr` | FRRouting 10.x | `quay.io/frrouting/frr` (public) | Validated: 28/28 (containerlab 0.74.3, FRR 10.2.1) |
+| `bird` | BIRD 2.17 | built locally from `common/images/bird` | Available - testing on containerlab |
 | `srlinux` | Nokia SR Linux | `ghcr.io/nokia/srlinux` (public) | Planned |
 | `eos` | Arista cEOS | `ceos` - free download from arista.com | Planned |
 | `routeros` | MikroTik RouterOS v7.20+ | CHR built with [vrnetlab](https://github.com/srl-labs/vrnetlab) | Planned |
@@ -39,6 +39,16 @@ The validators sit on the IXP LAN only to keep the lab small; in production they
 ## Quick start
 
 Requirements: Linux host, Docker, [containerlab](https://containerlab.dev/install/) 0.6x+, Python 3, `sudo`.
+
+On **macOS**, run everything inside a Linux VM. [OrbStack](https://orbstack.dev) works well: it shares `/Users` with the VM, so you edit on the Mac and run the lab in the VM:
+
+```bash
+orb create ubuntu clab && orb -m clab
+curl -sL https://containerlab.dev/setup | sudo -E bash -s "all"   # Docker + containerlab
+sudo usermod -aG docker $USER && exit                            # then: orb -m clab
+```
+
+On Apple Silicon only the container-native labs run (FRR, BIRD, SR Linux, cEOS); the VM-based images (RouterOS, IOS XE, IOS XR, Junos, SR OS) need an x86_64 Linux host.
 
 ```bash
 git clone <this repository> && cd interconnection-labs
