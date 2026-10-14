@@ -8,7 +8,7 @@ The same 28 checks are designed to run against nine platforms, so learners can c
 | Lab | DUT | Image | Status |
 | --- | --- | --- | --- |
 | `frr` | FRRouting 10.x | `quay.io/frrouting/frr` (public) | Validated: 28/28 (containerlab 0.74.3, FRR 10.2.1) |
-| `bird` | BIRD 2.17 | built locally from `common/images/bird` | Available - testing on containerlab (sessions without MD5) |
+| `bird` | BIRD 2.17 | built locally from `common/images/bird` | Validated: 28/28 (containerlab 0.74.3, BIRD 2.17.5) |
 | `srlinux` | Nokia SR Linux | `ghcr.io/nokia/srlinux` (public) | Planned |
 | `eos` | Arista cEOS | `ceos` - free download from arista.com | Planned |
 | `routeros` | MikroTik RouterOS v7.20+ | CHR built with [vrnetlab](https://github.com/srl-labs/vrnetlab) | Planned |
@@ -58,6 +58,8 @@ scripts/destroy.sh frr       # add --all to also remove the br-ixp bridge
 ```
 
 Run **one lab at a time**: every lab uses the same host bridge `br-ixp`.
+
+Give the lab **about 90 seconds** before running the checks. The BGP sessions come up in a few seconds, but the RPKI validators can take longer: BIRD 2.17 first offers RTR version 2 (with ASPA), StayRTR rejects it, and BIRD reconnects with an older version on its next retry. Until a validator is connected, the DUT cannot know that 45.12.0.0/16 is Invalid and `IMP-RPKI-INVALID` fails. That is ROV failing open (Lesson 5.2), not a filter bug.
 
 Image overrides use environment variables, for example:
 
