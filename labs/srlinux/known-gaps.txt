@@ -1,0 +1,2 @@
+# Checks expected to fail on SR Linux (platform limitation, not a config error)
+IMP-RPKI-INVALID  no RTR client / origin validation in SR Linux (Lesson 5.2)

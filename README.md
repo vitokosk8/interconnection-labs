@@ -9,7 +9,7 @@ The same 28 checks are designed to run against nine platforms, so learners can c
 | --- | --- | --- | --- |
 | `frr` | FRRouting 10.x | `quay.io/frrouting/frr` (public) | Validated: 28/28 (containerlab 0.74.3, FRR 10.2.1) |
 | `bird` | BIRD 2.17 | built locally from `common/images/bird` | Validated: 28/28 (containerlab 0.74.3, BIRD 2.17.5) |
-| `srlinux` | Nokia SR Linux | `ghcr.io/nokia/srlinux` (public) | Planned |
+| `srlinux` | Nokia SR Linux | `ghcr.io/nokia/srlinux` (public) | Available - testing on containerlab |
 | `eos` | Arista cEOS | `ceos` - free download from arista.com | Planned |
 | `routeros` | MikroTik RouterOS v7.20+ | CHR built with [vrnetlab](https://github.com/srl-labs/vrnetlab) | Planned |
 | `junos` | Juniper Junos | vJunos-router built with vrnetlab | Planned |

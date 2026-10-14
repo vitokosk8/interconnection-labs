@@ -1,0 +1,430 @@
+# =====================================================================
+# LAB EDITION - adapted from the reference configuration for the containerlab topology:
+#   - no session authentication (many lab hosts lack TCP-MD5, see README);
+#     the keychains are kept, commented, as the production example
+#   - CPM filter defined but not bound (keeps management access)
+#   - multihop 255 towards the route servers (they enforce GTSM)
+#   - known gap: no RPKI ROV on SR Linux -> see known-gaps.txt
+# =====================================================================
+# =====================================================================
+# Interconnection Guidelines and Operational Best Practices
+# Reference configuration - Nokia SR Linux (paths checked against the
+# SR Linux 26.7.2 YANG models)
+#
+# DOCUMENTATION-ONLY RESOURCES (RFC 5737 / RFC 3849 / RFC 5398).
+# Adapt before use. Validate in a lab (containerlab, ghcr.io/nokia/srlinux).
+# Load with:  enter candidate private  ->  paste  ->  diff  ->  commit now
+#
+# Topology (same as the other reference configurations)
+#   AS64500 (us)            own: 203.0.113.0/24, 2001:db8:500::/40
+#   ethernet-1/1  Transit A AS64496  198.51.100.1 / 2001:db8:100::1
+#   ethernet-1/2  Peer      AS64497  198.51.100.9
+#   ethernet-1/3  IXP LAN 192.0.2.0/24, us .50, RS1 .1 / RS2 .2 (AS64510)
+#   ethernet-1/4  Customer  AS64511  198.51.100.17
+#
+# Large community scheme (Unit 4)
+#   64500:1:1 own  64500:1:2 transit  64500:1:3 customer
+#   64500:1:4 private peer  64500:1:5 IXP route server
+#   64500:10:<asn> customer action: do not announce to <asn>
+#
+# SR Linux notes - what the 26.7 BGP model does NOT have:
+#   - RPKI / Route Origin Validation: no RTR client and no
+#     origin-validation match in routing-policy. ROV must be done
+#     upstream (e.g. by your transit) until Nokia adds it (Lesson 5.2).
+#   - GTSM / ttl-security (Lesson 2.2).
+#   - enforce-first-as, RFC 9234 roles, ASPA, RFC 8326 initiator.
+#   - Strict uRPF: unicast-rpf-check supports loose mode only, so
+#     source validation is done with an input ACL (Lesson 5.6).
+# What it does have: ebgp-default-policy (RFC 8212, on by default),
+# TCP-AO keychains, prefix limits, BFD, large communities, policy
+# chaining with next-policy.
+# =====================================================================
+
+# ---------------------------------------------------------------------
+# 1. Interfaces
+# ---------------------------------------------------------------------
+set / interface ethernet-1/1 admin-state enable
+set / interface ethernet-1/1 description "TRANSIT-A AS64496"
+set / interface ethernet-1/1 subinterface 0 ipv4 admin-state enable
+set / interface ethernet-1/1 subinterface 0 ipv4 address 198.51.100.2/30
+set / interface ethernet-1/1 subinterface 0 ipv6 admin-state enable
+set / interface ethernet-1/1 subinterface 0 ipv6 address 2001:db8:100::2/64
+set / interface ethernet-1/2 admin-state enable
+set / interface ethernet-1/2 description "PEER AS64497"
+set / interface ethernet-1/2 subinterface 0 ipv4 admin-state enable
+set / interface ethernet-1/2 subinterface 0 ipv4 address 198.51.100.10/30
+set / interface ethernet-1/3 admin-state enable
+set / interface ethernet-1/3 description "IXP PEERING LAN"
+set / interface ethernet-1/3 subinterface 0 ipv4 admin-state enable
+set / interface ethernet-1/3 subinterface 0 ipv4 address 192.0.2.50/24
+set / interface ethernet-1/4 admin-state enable
+set / interface ethernet-1/4 description "CUSTOMER AS64511"
+set / interface ethernet-1/4 subinterface 0 ipv4 admin-state enable
+set / interface ethernet-1/4 subinterface 0 ipv4 address 198.51.100.18/30
+
+set / network-instance default type default
+set / network-instance default admin-state enable
+set / network-instance default interface ethernet-1/1.0
+set / network-instance default interface ethernet-1/2.0
+set / network-instance default interface ethernet-1/3.0
+set / network-instance default interface ethernet-1/4.0
+
+# No LLDP on the IXP port (Lesson 6.2)
+set / system lldp interface ethernet-1/3 admin-state disable
+
+# BFD timers in microseconds (Lesson 2.4)
+set / bfd subinterface ethernet-1/1.0 admin-state enable
+set / bfd subinterface ethernet-1/1.0 desired-minimum-transmit-interval 300000
+set / bfd subinterface ethernet-1/1.0 required-minimum-receive 300000
+set / bfd subinterface ethernet-1/1.0 detection-multiplier 3
+set / bfd subinterface ethernet-1/2.0 admin-state enable
+set / bfd subinterface ethernet-1/2.0 desired-minimum-transmit-interval 300000
+set / bfd subinterface ethernet-1/2.0 required-minimum-receive 300000
+set / bfd subinterface ethernet-1/2.0 detection-multiplier 3
+
+# ---------------------------------------------------------------------
+# 2. Session authentication (Lesson 2.2)
+# ---------------------------------------------------------------------
+# set / system authentication keychain BGP-AO-TRANSIT-A admin-state enable
+# set / system authentication keychain BGP-AO-TRANSIT-A type tcp-ao
+# set / system authentication keychain BGP-AO-TRANSIT-A key 1 algorithm aes-128-cmac
+# set / system authentication keychain BGP-AO-TRANSIT-A key 1 authentication-key CHANGE-ME
+# set / system authentication keychain BGP-MD5 admin-state enable
+# set / system authentication keychain BGP-MD5 type tcp-md5
+# set / system authentication keychain BGP-MD5 key 0 algorithm md5
+# set / system authentication keychain BGP-MD5 key 0 authentication-key CHANGE-ME
+
+# ---------------------------------------------------------------------
+# 3. Control plane: TCP/179 only from configured BGP neighbors (Lesson 2.2)
+#    The prefix list follows the BGP neighbor list automatically.
+#    MERGE these entries into your existing CPM filter (low sequence
+#    numbers) instead of replacing it, or management access is lost.
+# ---------------------------------------------------------------------
+set / acl match-list ipv4-prefix-list BGP-PEERS-V4 apply-path 1 network-instance match default
+set / acl match-list ipv4-prefix-list BGP-PEERS-V4 apply-path 1 network-instance source protocol bgp neighbor ".*"
+set / acl acl-filter CPM type ipv4 entry 10 description "BGP from configured neighbors"
+set / acl acl-filter CPM type ipv4 entry 10 match ipv4 protocol tcp
+set / acl acl-filter CPM type ipv4 entry 10 match ipv4 source-ip prefix-list BGP-PEERS-V4
+set / acl acl-filter CPM type ipv4 entry 10 match transport destination-port value 179
+set / acl acl-filter CPM type ipv4 entry 10 action accept
+set / acl acl-filter CPM type ipv4 entry 11 description "Replies to sessions we opened"
+set / acl acl-filter CPM type ipv4 entry 11 match ipv4 protocol tcp
+set / acl acl-filter CPM type ipv4 entry 11 match ipv4 source-ip prefix-list BGP-PEERS-V4
+set / acl acl-filter CPM type ipv4 entry 11 match transport source-port value 179
+set / acl acl-filter CPM type ipv4 entry 11 action accept
+set / acl acl-filter CPM type ipv4 entry 12 description "BGP from anyone else"
+set / acl acl-filter CPM type ipv4 entry 12 match ipv4 protocol tcp
+set / acl acl-filter CPM type ipv4 entry 12 match transport destination-port value 179
+set / acl acl-filter CPM type ipv4 entry 12 action drop
+# lab: NOT bound, it would replace the default CPM filter and cut
+# containerlab's own management access. Production: merge, then bind:
+# set / system control-plane-traffic input acl acl-filter CPM type ipv4
+
+# ---------------------------------------------------------------------
+# 4. Anti-spoofing on the single-homed customer edge (Lesson 5.6, MANRS NO-2)
+#    Input ACL with the customer's prefixes (same IRR data as the BGP filter)
+# ---------------------------------------------------------------------
+set / acl acl-filter CUST-AS64511-SRC type ipv4 entry 10 match ipv4 source-ip prefix 198.51.100.16/30
+set / acl acl-filter CUST-AS64511-SRC type ipv4 entry 10 action accept
+# set / acl acl-filter CUST-AS64511-SRC type ipv4 entry 20 match ipv4 source-ip prefix <customer prefix>
+# set / acl acl-filter CUST-AS64511-SRC type ipv4 entry 20 action accept
+set / acl acl-filter CUST-AS64511-SRC type ipv4 entry 1000 action drop
+set / acl interface ethernet-1/4.0 interface-ref interface ethernet-1/4
+set / acl interface ethernet-1/4.0 interface-ref subinterface 0
+set / acl interface ethernet-1/4.0 input acl-filter CUST-AS64511-SRC type ipv4
+
+# ---------------------------------------------------------------------
+# 5. Own prefixes: blackhole static routes as origination anchors
+#    (Lesson 4.3) and RTBH trigger routes (Lesson 6.4)
+# ---------------------------------------------------------------------
+set / network-instance default next-hop-groups group BLACKHOLE blackhole generate-icmp false
+set / network-instance default static-routes route 203.0.113.0/24 next-hop-group BLACKHOLE
+set / network-instance default static-routes route 2001:db8:500::/40 next-hop-group BLACKHOLE
+# RTBH during an attack:
+# set / network-instance default static-routes route 203.0.113.66/32 next-hop-group BLACKHOLE
+
+# ---------------------------------------------------------------------
+# 6. Policy objects (Lessons 3.2-3.7, 4.2)
+# ---------------------------------------------------------------------
+set / routing-policy prefix-set BAD-LENGTH prefix 0.0.0.0/0 mask-length-range 0..7
+set / routing-policy prefix-set BAD-LENGTH prefix 0.0.0.0/0 mask-length-range 25..32
+set / routing-policy prefix-set BAD-LENGTH prefix ::/0 mask-length-range 0..15
+set / routing-policy prefix-set BAD-LENGTH prefix ::/0 mask-length-range 49..128
+
+set / routing-policy prefix-set BOGONS prefix 0.0.0.0/8 mask-length-range 8..32
+set / routing-policy prefix-set BOGONS prefix 10.0.0.0/8 mask-length-range 8..32
+set / routing-policy prefix-set BOGONS prefix 100.64.0.0/10 mask-length-range 10..32
+set / routing-policy prefix-set BOGONS prefix 127.0.0.0/8 mask-length-range 8..32
+set / routing-policy prefix-set BOGONS prefix 169.254.0.0/16 mask-length-range 16..32
+set / routing-policy prefix-set BOGONS prefix 172.16.0.0/12 mask-length-range 12..32
+set / routing-policy prefix-set BOGONS prefix 192.0.0.0/24 mask-length-range 24..32
+set / routing-policy prefix-set BOGONS prefix 192.168.0.0/16 mask-length-range 16..32
+set / routing-policy prefix-set BOGONS prefix 198.18.0.0/15 mask-length-range 15..32
+set / routing-policy prefix-set BOGONS prefix 224.0.0.0/4 mask-length-range 4..32
+set / routing-policy prefix-set BOGONS prefix 240.0.0.0/4 mask-length-range 4..32
+set / routing-policy prefix-set BOGONS prefix ::/3 mask-length-range 3..128
+set / routing-policy prefix-set BOGONS prefix 4000::/2 mask-length-range 2..128
+set / routing-policy prefix-set BOGONS prefix 8000::/1 mask-length-range 1..128
+set / routing-policy prefix-set BOGONS prefix 2001:2::/48 mask-length-range 48..128
+set / routing-policy prefix-set BOGONS prefix 2001:10::/28 mask-length-range 28..128
+set / routing-policy prefix-set BOGONS prefix 2002::/16 mask-length-range 16..128
+set / routing-policy prefix-set BOGONS prefix 3ffe::/16 mask-length-range 16..128
+
+# Documentation space - kept apart because the lab uses it.
+# PRODUCTION: un-comment statement 025-doc in SANITY-IN.
+set / routing-policy prefix-set DOC-PREFIXES prefix 192.0.2.0/24 mask-length-range 24..32
+set / routing-policy prefix-set DOC-PREFIXES prefix 198.51.100.0/24 mask-length-range 24..32
+set / routing-policy prefix-set DOC-PREFIXES prefix 203.0.113.0/24 mask-length-range 24..32
+set / routing-policy prefix-set DOC-PREFIXES prefix 2001:db8::/32 mask-length-range 32..128
+set / routing-policy prefix-set DOC-PREFIXES prefix 3fff::/20 mask-length-range 20..128
+
+set / routing-policy prefix-set OWN-SPACE prefix 203.0.113.0/24 mask-length-range 24..32
+set / routing-policy prefix-set OWN-SPACE prefix 2001:db8:500::/40 mask-length-range 40..128
+set / routing-policy prefix-set OWN-AGG prefix 203.0.113.0/24 mask-length-range exact
+set / routing-policy prefix-set OWN-AGG prefix 2001:db8:500::/40 mask-length-range exact
+set / routing-policy prefix-set OWN-HOSTS prefix 203.0.113.0/24 mask-length-range 32..32
+set / routing-policy prefix-set OWN-HOSTS prefix 2001:db8:500::/40 mask-length-range 128..128
+set / routing-policy prefix-set IXP-LANS prefix 192.0.2.0/24 mask-length-range 24..32
+
+# Customer prefix set: generated, never typed (Lessons 3.5, 7.5)
+#   bgpq4 -n2 -4 -A -m 24 -l CUST-AS64511 AS64511:AS-CUSTOMERS
+#   bgpq4 -n2 -6 -A -m 48 -l CUST-AS64511-V6 AS64511:AS-CUSTOMERS
+# PLACEHOLDER entries - replace with the bgpq4 output
+set / routing-policy prefix-set CUST-AS64511 prefix 198.51.100.0/24 mask-length-range exact
+set / routing-policy prefix-set CUST-AS64511 prefix 2001:db8:6400::/40 mask-length-range 40..48
+
+# AS paths (regex-mode asn: each element is one ASN, ranges allowed)
+set / routing-policy as-path-set BOGON-ASNS regex-mode asn
+set / routing-policy as-path-set BOGON-ASNS as-path-set-member [ ".* 0 .*" ".* 23456 .*" ".* [64512-65535] .*" ".* [65552-131071] .*" ".* [4200000000-4294967295] .*" ]
+set / routing-policy as-path-set DOC-ASNS regex-mode asn
+set / routing-policy as-path-set DOC-ASNS as-path-set-member [ ".* [64496-64511] .*" ".* [65536-65551] .*" ]
+set / routing-policy as-path-set TRANSIT-ASNS regex-mode asn
+set / routing-policy as-path-set TRANSIT-ASNS as-path-set-member [ ".* 174 .*" ".* 701 .*" ".* 1299 .*" ".* 2914 .*" ".* 3257 .*" ".* 3320 .*" ".* 3356 .*" ".* 3491 .*" ".* 5511 .*" ".* 6453 .*" ".* 6461 .*" ".* 6762 .*" ".* 6830 .*" ".* 7018 .*" ".* 12956 .*" ]
+
+# Communities
+set / routing-policy community-set GSHUT member [ 65535:0 ]
+set / routing-policy community-set RTBH member [ 65535:666 no-export 64500:1:1 ]
+set / routing-policy community-set OWN-INFO member [ 64500:1:1 64500:1:2 64500:1:3 64500:1:4 64500:1:5 ]
+set / routing-policy community-set TAG-OWN member [ 64500:1:1 ]
+set / routing-policy community-set TAG-TRANSIT member [ 64500:1:2 ]
+set / routing-policy community-set TAG-CUST member [ 64500:1:3 ]
+set / routing-policy community-set TAG-PEER member [ 64500:1:4 ]
+set / routing-policy community-set TAG-RS member [ 64500:1:5 ]
+set / routing-policy community-set DNA-64496 member [ 64500:10:64496 ]
+set / routing-policy community-set DNA-64497 member [ 64500:10:64497 ]
+set / routing-policy community-set DNA-64510 member [ 64500:10:64510 ]
+
+# ---------------------------------------------------------------------
+# 7. Inbound policies (Lessons 3.1-3.7, 4.2, 7.1)
+#    import chain: SANITY-IN [NO-TRANSIT-ASN] <SESSION>-IN
+#    Statements are evaluated in configuration order.
+# ---------------------------------------------------------------------
+set / routing-policy policy SANITY-IN statement 010-bad-length match prefix prefix-set BAD-LENGTH
+set / routing-policy policy SANITY-IN statement 010-bad-length action policy-result reject
+set / routing-policy policy SANITY-IN statement 020-bogons match prefix prefix-set BOGONS
+set / routing-policy policy SANITY-IN statement 020-bogons action policy-result reject
+# PRODUCTION: un-comment
+# set / routing-policy policy SANITY-IN statement 025-doc match prefix prefix-set DOC-PREFIXES
+# set / routing-policy policy SANITY-IN statement 025-doc action policy-result reject
+set / routing-policy policy SANITY-IN statement 030-bogon-asn match bgp as-path as-path-set BOGON-ASNS
+set / routing-policy policy SANITY-IN statement 030-bogon-asn match bgp as-path match-set-options any
+set / routing-policy policy SANITY-IN statement 030-bogon-asn action policy-result reject
+# PRODUCTION: un-comment
+# set / routing-policy policy SANITY-IN statement 035-doc-asn match bgp as-path as-path-set DOC-ASNS
+# set / routing-policy policy SANITY-IN statement 035-doc-asn match bgp as-path match-set-options any
+# set / routing-policy policy SANITY-IN statement 035-doc-asn action policy-result reject
+set / routing-policy policy SANITY-IN statement 040-long-path match bgp as-path-length value 51
+set / routing-policy policy SANITY-IN statement 040-long-path match bgp as-path-length operator ge
+set / routing-policy policy SANITY-IN statement 040-long-path action policy-result reject
+set / routing-policy policy SANITY-IN statement 050-own-space match prefix prefix-set OWN-SPACE
+set / routing-policy policy SANITY-IN statement 050-own-space action policy-result reject
+set / routing-policy policy SANITY-IN statement 060-ixp-lan match prefix prefix-set IXP-LANS
+set / routing-policy policy SANITY-IN statement 060-ixp-lan action policy-result reject
+# No RPKI ROV statement: not available on SR Linux (see header)
+set / routing-policy policy SANITY-IN default-action policy-result next-policy
+set / routing-policy policy SANITY-IN default-action bgp communities remove OWN-INFO
+
+set / routing-policy policy NO-TRANSIT-ASN statement 010 match bgp as-path as-path-set TRANSIT-ASNS
+set / routing-policy policy NO-TRANSIT-ASN statement 010 match bgp as-path match-set-options any
+set / routing-policy policy NO-TRANSIT-ASN statement 010 action policy-result reject
+set / routing-policy policy NO-TRANSIT-ASN default-action policy-result next-policy
+
+set / routing-policy policy TRANSIT-IN statement 010-gshut match bgp community-set GSHUT
+set / routing-policy policy TRANSIT-IN statement 010-gshut action policy-result accept
+set / routing-policy policy TRANSIT-IN statement 010-gshut action bgp local-preference value 0
+set / routing-policy policy TRANSIT-IN statement 010-gshut action bgp communities add TAG-TRANSIT
+set / routing-policy policy TRANSIT-IN default-action policy-result accept
+set / routing-policy policy TRANSIT-IN default-action bgp local-preference value 100
+set / routing-policy policy TRANSIT-IN default-action bgp communities add TAG-TRANSIT
+
+set / routing-policy policy PEER-IN statement 010-gshut match bgp community-set GSHUT
+set / routing-policy policy PEER-IN statement 010-gshut action policy-result accept
+set / routing-policy policy PEER-IN statement 010-gshut action bgp local-preference value 0
+set / routing-policy policy PEER-IN statement 010-gshut action bgp communities add TAG-PEER
+set / routing-policy policy PEER-IN default-action policy-result accept
+set / routing-policy policy PEER-IN default-action bgp local-preference value 250
+set / routing-policy policy PEER-IN default-action bgp communities add TAG-PEER
+
+set / routing-policy policy IXP-RS-IN statement 010-gshut match bgp community-set GSHUT
+set / routing-policy policy IXP-RS-IN statement 010-gshut action policy-result accept
+set / routing-policy policy IXP-RS-IN statement 010-gshut action bgp local-preference value 0
+set / routing-policy policy IXP-RS-IN statement 010-gshut action bgp communities add TAG-RS
+set / routing-policy policy IXP-RS-IN default-action policy-result accept
+set / routing-policy policy IXP-RS-IN default-action bgp local-preference value 200
+set / routing-policy policy IXP-RS-IN default-action bgp communities add TAG-RS
+
+# Customer: only prefixes in the IRR-generated set (MANRS NO-1)
+set / routing-policy policy CUST-AS64511-IN statement 010-gshut match prefix prefix-set CUST-AS64511
+set / routing-policy policy CUST-AS64511-IN statement 010-gshut match bgp community-set GSHUT
+set / routing-policy policy CUST-AS64511-IN statement 010-gshut action policy-result accept
+set / routing-policy policy CUST-AS64511-IN statement 010-gshut action bgp local-preference value 0
+set / routing-policy policy CUST-AS64511-IN statement 010-gshut action bgp communities add TAG-CUST
+set / routing-policy policy CUST-AS64511-IN statement 020-irr match prefix prefix-set CUST-AS64511
+set / routing-policy policy CUST-AS64511-IN statement 020-irr action policy-result accept
+set / routing-policy policy CUST-AS64511-IN statement 020-irr action bgp local-preference value 300
+set / routing-policy policy CUST-AS64511-IN statement 020-irr action bgp communities add TAG-CUST
+set / routing-policy policy CUST-AS64511-IN default-action policy-result reject
+
+# ---------------------------------------------------------------------
+# 8. Outbound policies (Lessons 4.3, 4.4, 4.6, 6.4, 7.1)
+#    export chain: [MAINT-GSHUT] DNA-<asn> UPSTREAM-OUT
+# ---------------------------------------------------------------------
+# Maintenance: put MAINT-GSHUT first in a group's export chain to drain
+# it (RFC 8326), remove it after the work.
+set / routing-policy policy MAINT-GSHUT default-action policy-result next-policy
+set / routing-policy policy MAINT-GSHUT default-action bgp communities add GSHUT
+
+set / routing-policy policy DNA-64496 statement 010 match bgp community-set DNA-64496
+set / routing-policy policy DNA-64496 statement 010 action policy-result reject
+set / routing-policy policy DNA-64496 default-action policy-result next-policy
+set / routing-policy policy DNA-64497 statement 010 match bgp community-set DNA-64497
+set / routing-policy policy DNA-64497 statement 010 action policy-result reject
+set / routing-policy policy DNA-64497 default-action policy-result next-policy
+set / routing-policy policy DNA-64510 statement 010 match bgp community-set DNA-64510
+set / routing-policy policy DNA-64510 statement 010 action policy-result reject
+set / routing-policy policy DNA-64510 default-action policy-result next-policy
+
+set / routing-policy policy UPSTREAM-OUT statement 010-rtbh match protocol static
+set / routing-policy policy UPSTREAM-OUT statement 010-rtbh match prefix prefix-set OWN-HOSTS
+set / routing-policy policy UPSTREAM-OUT statement 010-rtbh action policy-result accept
+set / routing-policy policy UPSTREAM-OUT statement 010-rtbh action bgp communities add RTBH
+set / routing-policy policy UPSTREAM-OUT statement 020-own match protocol static
+set / routing-policy policy UPSTREAM-OUT statement 020-own match prefix prefix-set OWN-AGG
+set / routing-policy policy UPSTREAM-OUT statement 020-own action policy-result accept
+set / routing-policy policy UPSTREAM-OUT statement 020-own action bgp communities add TAG-OWN
+set / routing-policy policy UPSTREAM-OUT statement 030-customer match bgp community-set TAG-CUST
+set / routing-policy policy UPSTREAM-OUT statement 030-customer action policy-result accept
+# Never export transit or peer routes (MANRS NO-1)
+set / routing-policy policy UPSTREAM-OUT default-action policy-result reject
+
+set / routing-policy policy CUSTOMER-OUT statement 010-own match protocol static
+set / routing-policy policy CUSTOMER-OUT statement 010-own match prefix prefix-set OWN-AGG
+set / routing-policy policy CUSTOMER-OUT statement 010-own action policy-result accept
+set / routing-policy policy CUSTOMER-OUT statement 020-bgp match protocol bgp
+set / routing-policy policy CUSTOMER-OUT statement 020-bgp action policy-result accept
+set / routing-policy policy CUSTOMER-OUT default-action policy-result reject
+
+# ---------------------------------------------------------------------
+# 9. BGP (Lessons 2.1-2.4, 6.1)
+# ---------------------------------------------------------------------
+set / network-instance default protocols bgp admin-state enable
+set / network-instance default protocols bgp autonomous-system 64500
+set / network-instance default protocols bgp router-id 203.0.113.1
+set / network-instance default protocols bgp afi-safi ipv4-unicast admin-state enable
+set / network-instance default protocols bgp afi-safi ipv6-unicast admin-state enable
+# RFC 8212 - these are the defaults, stated explicitly
+set / network-instance default protocols bgp ebgp-default-policy import-reject-all true
+set / network-instance default protocols bgp ebgp-default-policy export-reject-all true
+
+set / network-instance default protocols bgp group TRANSIT peer-as 64496
+set / network-instance default protocols bgp group TRANSIT import-policy [ SANITY-IN TRANSIT-IN ]
+set / network-instance default protocols bgp group TRANSIT export-policy [ DNA-64496 UPSTREAM-OUT ]
+set / network-instance default protocols bgp group TRANSIT failure-detection enable-bfd true
+set / network-instance default protocols bgp group PEER-AS64497 peer-as 64497
+set / network-instance default protocols bgp group PEER-AS64497 import-policy [ SANITY-IN NO-TRANSIT-ASN PEER-IN ]
+set / network-instance default protocols bgp group PEER-AS64497 export-policy [ DNA-64497 UPSTREAM-OUT ]
+set / network-instance default protocols bgp group PEER-AS64497 failure-detection enable-bfd true
+set / network-instance default protocols bgp group IXP-RS peer-as 64510
+set / network-instance default protocols bgp group IXP-RS import-policy [ SANITY-IN NO-TRANSIT-ASN IXP-RS-IN ]
+set / network-instance default protocols bgp group IXP-RS export-policy [ DNA-64510 UPSTREAM-OUT ]
+# lab: SR Linux has no GTSM; the lab route servers require TTL 255,
+# so send TTL 255 with multihop on the route server sessions
+set / network-instance default protocols bgp group IXP-RS multihop admin-state enable
+set / network-instance default protocols bgp group IXP-RS multihop maximum-hops 255
+set / network-instance default protocols bgp group CUST-AS64511 peer-as 64511
+set / network-instance default protocols bgp group CUST-AS64511 import-policy [ SANITY-IN NO-TRANSIT-ASN CUST-AS64511-IN ]
+set / network-instance default protocols bgp group CUST-AS64511 export-policy [ CUSTOMER-OUT ]
+
+# Prefix-limit restart timer (seconds) for groups that tear down
+set / network-instance default protocols bgp group PEER-AS64497 timers prefix-limit-restart-timer 1800
+set / network-instance default protocols bgp group IXP-RS timers prefix-limit-restart-timer 1800
+set / network-instance default protocols bgp group CUST-AS64511 timers prefix-limit-restart-timer 1800
+
+# Transit A (TCP-AO). Full table: high limit, warning only (prevent-teardown)
+set / network-instance default protocols bgp neighbor 198.51.100.1 peer-group TRANSIT
+set / network-instance default protocols bgp neighbor 198.51.100.1 description TRANSIT-A
+set / network-instance default protocols bgp neighbor 198.51.100.1 transport local-address 198.51.100.2
+# lab: no TCP-MD5 (see README) - production:
+# set / network-instance default protocols bgp neighbor 198.51.100.1 authentication keychain BGP-MD5
+set / network-instance default protocols bgp neighbor 198.51.100.1 afi-safi ipv4-unicast admin-state enable
+set / network-instance default protocols bgp neighbor 198.51.100.1 afi-safi ipv4-unicast ipv4-unicast prefix-limit-received max-received-routes 1100000
+set / network-instance default protocols bgp neighbor 198.51.100.1 afi-safi ipv4-unicast ipv4-unicast prefix-limit-received prevent-teardown true
+set / network-instance default protocols bgp neighbor 2001:db8:100::1 peer-group TRANSIT
+set / network-instance default protocols bgp neighbor 2001:db8:100::1 description TRANSIT-A-V6
+set / network-instance default protocols bgp neighbor 2001:db8:100::1 transport local-address 2001:db8:100::2
+# lab: no TCP-MD5 (see README) - production:
+# set / network-instance default protocols bgp neighbor 2001:db8:100::1 authentication keychain BGP-MD5
+set / network-instance default protocols bgp neighbor 2001:db8:100::1 afi-safi ipv6-unicast admin-state enable
+set / network-instance default protocols bgp neighbor 2001:db8:100::1 afi-safi ipv6-unicast ipv6-unicast prefix-limit-received max-received-routes 250000
+set / network-instance default protocols bgp neighbor 2001:db8:100::1 afi-safi ipv6-unicast ipv6-unicast prefix-limit-received prevent-teardown true
+
+# Private peer AS64497 - PeeringDB count + 20 %
+set / network-instance default protocols bgp neighbor 198.51.100.9 peer-group PEER-AS64497
+set / network-instance default protocols bgp neighbor 198.51.100.9 description PEER-AS64497
+set / network-instance default protocols bgp neighbor 198.51.100.9 transport local-address 198.51.100.10
+# lab: no TCP-MD5 (see README) - production:
+# set / network-instance default protocols bgp neighbor 198.51.100.9 authentication keychain BGP-MD5
+set / network-instance default protocols bgp neighbor 198.51.100.9 afi-safi ipv4-unicast admin-state enable
+set / network-instance default protocols bgp neighbor 198.51.100.9 afi-safi ipv4-unicast ipv4-unicast prefix-limit-received max-received-routes 1200
+set / network-instance default protocols bgp neighbor 198.51.100.9 afi-safi ipv4-unicast ipv4-unicast prefix-limit-received warning-threshold-pct 90
+
+# IXP route servers
+set / network-instance default protocols bgp neighbor 192.0.2.1 peer-group IXP-RS
+set / network-instance default protocols bgp neighbor 192.0.2.1 description IXP-RS1
+set / network-instance default protocols bgp neighbor 192.0.2.1 transport local-address 192.0.2.50
+set / network-instance default protocols bgp neighbor 192.0.2.1 afi-safi ipv4-unicast admin-state enable
+set / network-instance default protocols bgp neighbor 192.0.2.1 afi-safi ipv4-unicast ipv4-unicast prefix-limit-received max-received-routes 250000
+set / network-instance default protocols bgp neighbor 192.0.2.1 afi-safi ipv4-unicast ipv4-unicast prefix-limit-received warning-threshold-pct 90
+set / network-instance default protocols bgp neighbor 192.0.2.2 peer-group IXP-RS
+set / network-instance default protocols bgp neighbor 192.0.2.2 description IXP-RS2
+set / network-instance default protocols bgp neighbor 192.0.2.2 transport local-address 192.0.2.50
+set / network-instance default protocols bgp neighbor 192.0.2.2 afi-safi ipv4-unicast admin-state enable
+set / network-instance default protocols bgp neighbor 192.0.2.2 afi-safi ipv4-unicast ipv4-unicast prefix-limit-received max-received-routes 250000
+set / network-instance default protocols bgp neighbor 192.0.2.2 afi-safi ipv4-unicast ipv4-unicast prefix-limit-received warning-threshold-pct 90
+
+# Customer AS64511 - size of the generated prefix set + margin
+set / network-instance default protocols bgp neighbor 198.51.100.17 peer-group CUST-AS64511
+set / network-instance default protocols bgp neighbor 198.51.100.17 description CUST-AS64511
+set / network-instance default protocols bgp neighbor 198.51.100.17 transport local-address 198.51.100.18
+# lab: no TCP-MD5 (see README) - production:
+# set / network-instance default protocols bgp neighbor 198.51.100.17 authentication keychain BGP-MD5
+set / network-instance default protocols bgp neighbor 198.51.100.17 afi-safi ipv4-unicast admin-state enable
+set / network-instance default protocols bgp neighbor 198.51.100.17 afi-safi ipv4-unicast ipv4-unicast prefix-limit-received max-received-routes 50
+set / network-instance default protocols bgp neighbor 198.51.100.17 afi-safi ipv4-unicast ipv4-unicast prefix-limit-received warning-threshold-pct 90
+
+# ---------------------------------------------------------------------
+# Notes
+# ---------------------------------------------------------------------
+# Maintenance (Lesson 7.1) - drain transit A, then shut the session:
+#   set / network-instance default protocols bgp group TRANSIT export-policy [ MAINT-GSHUT DNA-64496 UPSTREAM-OUT ]
+#   ... wait for traffic to move, then:
+#   set / network-instance default protocols bgp neighbor 198.51.100.1 admin-state disable
+#
+# Safe changes: "enter candidate private", "diff", then
+# "commit confirmed" and "commit now" once verified (automatic rollback
+# if the confirmation never comes).
+#
+# Checks:
+#   show network-instance default protocols bgp neighbor 198.51.100.1 advertised-routes ipv4
+#   show network-instance default protocols bgp neighbor 198.51.100.1 received-routes ipv4
+#   info from state network-instance default protocols bgp neighbor 198.51.100.9 afi-safi ipv4-unicast
