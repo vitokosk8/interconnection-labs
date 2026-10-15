@@ -11,7 +11,7 @@ The same 28 checks are designed to run against ten platforms, so learners can co
 | `bird` | BIRD 2.17 | built locally from `common/images/bird` | Validated: 28/28 (containerlab 0.74.3, BIRD 2.17.5) |
 | `gobgp` | GoBGP 4.x | built locally from `common/images/gobgp` | Validated: 28/28 (containerlab 0.74.3, GoBGP 4.10.0) |
 | `srlinux` | Nokia SR Linux | `ghcr.io/nokia/srlinux` (public) | Validated: 27/28 + 1 GAP, no ROV (containerlab 0.74.3, SR Linux 26.7.2) |
-| `eos` | Arista cEOS | `ceos` - free download from arista.com | Available - testing on containerlab |
+| `eos` | Arista cEOS | `ceos` - free download from arista.com | Validated: 28/28 (containerlab 0.74.3, cEOS-lab 4.36.2F arm64) |
 | `routeros` | MikroTik RouterOS v7.20+ | CHR built with [vrnetlab](https://github.com/srl-labs/vrnetlab) | Planned |
 | `junos` | Juniper Junos | vJunos-router built with vrnetlab | Planned |
 | `iosxe` | Cisco IOS XE | Catalyst 8000v built with vrnetlab | Planned |
@@ -159,6 +159,7 @@ scripts/          deploy.sh, check.sh, destroy.sh
 - **No session authentication in the lab.** TCP-MD5 needs kernel support (`CONFIG_TCP_MD5SIG`), and the kernels of OrbStack and Docker Desktop do not have it. BIRD 2.17 refuses to start a session in that case ("Kernel does not support TCP MD5 signatures"); FRR silently runs the session *without* MD5. Rather than depend on the host kernel, the lab sessions run unauthenticated and every config shows the production line as a comment. The reference configurations keep TCP-MD5 / TCP-AO (Lesson 2.2). To check your host: `zcat /proc/config.gz 2>/dev/null | grep TCP_MD5 || grep TCP_MD5 /boot/config-$(uname -r)`.
 - **GTSM.** The FRR neighbours send TTL 255 (`ebgp-multihop 255`) and accept any TTL, so they work with DUTs with and without GTSM. The BIRD route servers enforce GTSM; SR Linux, which has no GTSM, reaches them with `multihop maximum-hops 255`.
 - **SR Linux startup files.** Containerlab loads `config.cli` in one commit. The SR Linux CLI reads an apostrophe as the start of a quoted string, even inside a `#` comment. One unpaired apostrophe silently discards every line after it, with no error. Keep comments free of `'`.
+- **EOS route-map semantics.** Three behaviours the EOS lab had to work around, all documented in `labs/eos/dut/config.cfg`: AS-path regexes default to `regex-mode asn` (each AS number is one token, so `6451[2-9]` never matches; the lab uses `regex-mode string`); a `deny` inside a sub-route-map makes the parent entry "not match" and evaluation moves on to the next entry (hence the explicit `deny 20`); and `set large-community ... delete` is not applied in the order written relative to `additive`, so each session scrubs every informational tag except its own.
 - **Editing bind-mounted files.** Editors that replace the file (`sed -i`, some `vim` settings) break Docker bind mounts: the container keeps the old file. Edit in place or redeploy.
 - **IXP LAN forwarding.** If the route-server sessions stay in `Connect`, Docker's `FORWARD DROP` policy is blocking the bridge; `deploy.sh` adds the `DOCKER-USER` rule that fixes it.
 
