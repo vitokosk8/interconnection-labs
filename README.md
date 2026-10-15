@@ -13,7 +13,7 @@ The same 28 checks are designed to run against eleven platforms, so learners can
 | `openbgpd` | OpenBGPD 8.x (portable; same `bgpd.conf` as on OpenBSD) | built locally from `common/images/openbgpd` | Validated: 28/28 (containerlab 0.74.3, OpenBGPD 8.8) |
 | `srlinux` | Nokia SR Linux | `ghcr.io/nokia/srlinux` (public) | Validated: 27/28 + 1 GAP, no ROV (containerlab 0.74.3, SR Linux 26.7.2) |
 | `eos` | Arista cEOS | `ceos` - free download from arista.com | Validated: 28/28 (containerlab 0.74.3, cEOS-lab 4.36.2F arm64) |
-| `routeros` | MikroTik RouterOS v7.20+ | CHR built with [vrnetlab](https://github.com/srl-labs/vrnetlab) | Planned |
+| `routeros` | MikroTik RouterOS v7.20+ | CHR built with [vrnetlab](https://github.com/srl-labs/vrnetlab) | Available - testing on containerlab |
 | `junos` | Juniper Junos | vJunos-router built with vrnetlab | Planned |
 | `iosxe` | Cisco IOS XE | Catalyst 8000v built with vrnetlab | Planned |
 | `iosxr` | Cisco IOS XR | XRd control-plane (Cisco download) | Planned |
@@ -50,7 +50,7 @@ curl -sL https://containerlab.dev/setup | sudo -E bash -s "all"   # Docker + con
 sudo usermod -aG docker $USER && exit                            # then: orb -m clab
 ```
 
-On Apple Silicon only the container-native labs run (FRR, BIRD, GoBGP, OpenBGPD, SR Linux, cEOS); the VM-based images (RouterOS, IOS XE, IOS XR, Junos, SR OS) need an x86_64 Linux host.
+On Apple Silicon the container-native labs run (FRR, BIRD, GoBGP, OpenBGPD, SR Linux, cEOS), and so does RouterOS, because MikroTik publishes an arm64 CHR. The other VM-based images (IOS XE, IOS XR, Junos, SR OS) need an x86_64 Linux host.
 
 ```bash
 git clone https://github.com/vitokosk8/interconnection-labs.git
@@ -74,6 +74,7 @@ FRR_IMAGE=quay.io/frrouting/frr:10.3.1 scripts/deploy.sh frr
 | --- | --- |
 | `FRR_IMAGE` | `quay.io/frrouting/frr:10.2.1` |
 | `BIRD_IMAGE` / `RPKI_IMAGE` | `ig/bird:latest` / `ig/rpki:latest` (built by `deploy.sh`) |
+| `ROS_IMAGE` | `vrnetlab/mikrotik_routeros:latest` - build it yourself, see below |
 | `CEOS_IMAGE` | `ceos:latest` - import it yourself, see below |
 | `OPENBGPD_IMAGE` | `ig/openbgpd:latest` (built by `deploy.sh openbgpd`, Debian package) |
 | `GOBGP_IMAGE` | `ig/gobgp:latest` (built by `deploy.sh gobgp`, GoBGP 4.10.0) |
@@ -90,6 +91,20 @@ scripts/deploy.sh eos
 cEOS takes 1-2 minutes to boot before BGP starts.
 
 Check the build after the first deploy: `docker exec clab-ig-eos-dut Cli -c "show version" | grep Architecture` must say `aarch64` on Apple Silicon. An x86 image (`i686` / `x86_64`) still starts under emulation, but its forwarding agent crashes and all Ethernet ports stay down ("BGP inactive"). `docker image inspect` does not help here: `docker import` labels the image with the host architecture whatever it contains. `scripts/check.sh eos` warns about this.
+
+### MikroTik RouterOS (CHR) image
+
+RouterOS runs as a virtual machine inside a container built with [vrnetlab](https://github.com/srl-labs/vrnetlab). Download the CHR disk image from [mikrotik.com/download](https://mikrotik.com/download) (stable 7.20 or later): the **arm64 VDI** on Apple Silicon, the **VMDK** on x86_64. Then, inside the Linux VM:
+
+```bash
+git clone https://github.com/srl-labs/vrnetlab.git
+cp chr-7.*-arm64.vdi vrnetlab/mikrotik/routeros/      # or chr-7.*.vmdk on x86_64
+cd vrnetlab/mikrotik/routeros && make
+docker images | grep mikrotik_routeros                 # note the tag, e.g. 7.20.4-arm64
+docker tag vrnetlab/mikrotik_routeros:7.20.4-arm64 vrnetlab/mikrotik_routeros:latest
+```
+
+The VM runs much faster with hardware virtualisation: check `ls /dev/kvm` in the Linux VM (on Apple Silicon this needs an M3 or later). Without it, QEMU emulates the CPU and the router takes a few minutes to boot. Containerlab maps `eth1`-`eth4` to `ether2`-`ether5`; `ether1` is management.
 
 ## What is tested
 

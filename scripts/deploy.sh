@@ -28,6 +28,17 @@ if [ "$VENDOR" = eos ]; then
   fi
 fi
 
+if [ "$VENDOR" = routeros ]; then
+  IMG="${ROS_IMAGE:-vrnetlab/mikrotik_routeros:latest}"
+  if ! docker image inspect "$IMG" >/dev/null 2>&1; then
+    echo "RouterOS image '$IMG' not found. Build it with vrnetlab (see the README):"
+    echo "  CHR image from mikrotik.com/download (chr-7.x-arm64.vdi on Apple Silicon,"
+    echo "  chr-7.x.vmdk on x86_64) -> srl-labs/vrnetlab mikrotik/routeros -> make"
+    echo "then: docker tag vrnetlab/mikrotik_routeros:<version> $IMG"
+    exit 1
+  fi
+fi
+
 # 2. The IXP peering LAN is a Linux bridge on the host
 if ! ip link show br-ixp >/dev/null 2>&1; then
   sudo ip link add name br-ixp type bridge
