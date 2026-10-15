@@ -24,8 +24,8 @@ Two smaller labs test **ASPA** (Lesson 5.5) on the platforms that implement it:
 
 | Lab | DUT | Status |
 | --- | --- | --- |
-| `aspa-bird` | BIRD 2.17 | Available - testing on containerlab (8/8 outside containerlab) |
-| `aspa-openbgpd` | OpenBGPD 8.x | Available - testing on containerlab (8/8 outside containerlab) |
+| `aspa-bird` | BIRD 2.17 | Validated: 8/8 (containerlab 0.74.3, BIRD 2.17.5) |
+| `aspa-openbgpd` | OpenBGPD 8.x | Validated: 8/8 (containerlab 0.74.3, OpenBGPD 8.8) |
 
 Labs are added one at a time: each one is deployed on containerlab and must pass the checks before it is published here.
 
