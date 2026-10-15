@@ -5,6 +5,7 @@ cd "$(dirname "$0")/.."
 VENDOR="${1:?usage: $0 <vendor>}"
 ARGS=(--lab "ig-${VENDOR}")
 [ "$VENDOR" = "iosxe" ] && ARGS+=(--communities standard)
+case "$VENDOR" in aspa-*) ARGS+=(--suite aspa) ;; esac
 [ -f "labs/${VENDOR}/known-gaps.txt" ] && ARGS+=(--known-gaps "labs/${VENDOR}/known-gaps.txt")
 # cEOS: an x86 image on an ARM host runs under emulation and its
 # forwarding agent (Etba) crashes, leaving every Ethernet port down.

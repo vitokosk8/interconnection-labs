@@ -1,0 +1,52 @@
+# =====================================================================
+# Interconnection Guidelines - ASPA lab (Lesson 5.5) - DUT: BIRD 2.17
+#
+#   transit AS64496 (provider) --eth1-- DUT AS64500 --eth3-- customer AS64511
+#                                        |eth2
+#                                  peer AS64497
+#
+# ASPA records: common/aspa/rpki/aspa.json -> gen-aspa.py -> loaded by the DUT
+# Deploy:  scripts/deploy.sh aspa-bird
+# Test:    scripts/check.sh aspa-bird     (8 ASPA checks)
+# =====================================================================
+name: ig-aspa-bird
+
+topology:
+  defaults:
+    kind: linux
+
+  nodes:
+    dut:
+      image: ${BIRD_IMAGE:=ig/bird:latest}
+      binds:
+        - dut/bird.conf:/etc/bird/bird.conf
+        - ../../common/aspa/rpki/aspa-bird.conf:/etc/bird/aspa.conf
+      exec:
+        - ip addr add 198.51.100.2/30 dev eth1
+        - ip addr add 198.51.100.10/30 dev eth2
+        - ip addr add 198.51.100.18/30 dev eth3
+        - ip addr add 203.0.113.1/32 dev lo
+
+    transit:
+      image: ${FRR_IMAGE:=quay.io/frrouting/frr:10.2.1}
+      binds:
+        - ../../common/aspa/transit/frr.conf:/etc/frr/frr.conf
+        - ../../common/neighbors/daemons:/etc/frr/daemons
+        - ../../common/neighbors/vtysh.conf:/etc/frr/vtysh.conf
+    peer:
+      image: ${FRR_IMAGE:=quay.io/frrouting/frr:10.2.1}
+      binds:
+        - ../../common/aspa/peer/frr.conf:/etc/frr/frr.conf
+        - ../../common/neighbors/daemons:/etc/frr/daemons
+        - ../../common/neighbors/vtysh.conf:/etc/frr/vtysh.conf
+    customer:
+      image: ${FRR_IMAGE:=quay.io/frrouting/frr:10.2.1}
+      binds:
+        - ../../common/aspa/customer/frr.conf:/etc/frr/frr.conf
+        - ../../common/neighbors/daemons:/etc/frr/daemons
+        - ../../common/neighbors/vtysh.conf:/etc/frr/vtysh.conf
+
+  links:
+    - endpoints: ["dut:eth1", "transit:eth1"]
+    - endpoints: ["dut:eth2", "peer:eth1"]
+    - endpoints: ["dut:eth3", "customer:eth1"]

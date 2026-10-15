@@ -20,6 +20,13 @@ The same 28 checks are designed to run against twelve platforms, so learners can
 | `iosxr` | Cisco IOS XR | XRd control-plane (Cisco download) | Planned |
 | `sros` | Nokia SR OS (MD-CLI) | vSIM built with vrnetlab + licence | Planned |
 
+Two smaller labs test **ASPA** (Lesson 5.5) on the platforms that implement it:
+
+| Lab | DUT | Status |
+| --- | --- | --- |
+| `aspa-bird` | BIRD 2.17 | Available - testing on containerlab (8/8 outside containerlab) |
+| `aspa-openbgpd` | OpenBGPD 8.x | Available - testing on containerlab (8/8 outside containerlab) |
+
 Labs are added one at a time: each one is deployed on containerlab and must pass the checks before it is published here.
 
 ## Topology
@@ -169,6 +176,28 @@ The peer's route 45.20.0.0/16 carries a **fake customer tag** (64500:1:3). It mu
 
 `GAP` marks a check that fails because of a platform limitation listed in `labs/<vendor>/known-gaps.txt` (for example, SR Linux has no RPKI ROV). Gaps do not count as failures.
 
+## ASPA lab
+
+ROV checks the origin of a route; a leak keeps the legitimate origin, so ROV cannot see it. ASPA lets each AS publish its providers, and a router that knows its relationship with each neighbour (the BGP role) checks whether the AS path is plausible: from a customer or a peer every hop must go up to a provider (upstream verification); from a provider the path may go up once and then down (downstream verification). The `aspa-*` labs use a reduced topology (transit, peer, customer, no IXP) and dedicated neighbours in `common/aspa/`.
+
+| Check | Seen at | Prefix | AS path received | ASPA result | Expected |
+| --- | --- | --- | --- | --- | --- |
+| A-T-VALID | customer | 45.80.0.0/16 | 64496 65540 | Valid | present |
+| A-T-VALLEY | customer | 45.81.0.0/16 | 64496 65541 65542 | Invalid (valley) | absent |
+| A-T-UNKNOWN | customer | 45.82.0.0/16 | 64496 65549 65550 | Unknown | present |
+| A-P-VALID | customer | 45.70.0.0/16 | 64497 | Valid | present |
+| A-P-LEAK | customer | 45.71.0.0/16 | 64497 65545 65547 | Invalid (peer leaks its provider route) | absent |
+| A-C-VALID | transit | 45.60.0.0/16 | 64511 | Valid | present |
+| A-C-LEAK | transit | 45.61.0.0/16 | 64511 65536 65537 | Invalid (customer leaks its other provider) | absent |
+| A-C-UNKNOWN | transit | 45.62.0.0/16 | 64511 65546 | Unknown | present |
+
+The ASPA records live in `common/aspa/rpki/aspa.json`. `gen-aspa.py` turns them into the two files the routers load, in the formats rpki-client writes in production (`rpki-client -B` for BIRD, `aspa-set` for OpenBGPD). ASPA over RTR is not used: RTR version 2 is still an IETF draft, StayRTR 0.6 has no ASPA support, and validators and routers built on different draft revisions misread each other's ASPA PDUs (BIRD 2.17 took StayRTR 0.5's ASPA records as withdrawals).
+
+Exercises:
+1. Remove the ASPA rule from the DUT, redeploy and watch A-T-VALLEY, A-P-LEAK and A-C-LEAK turn red: these leaks pass every other filter in the main labs.
+2. Delete the ASPA of AS65536 from `aspa.json`, run `gen-aspa.py`, redeploy: A-C-LEAK becomes Unknown and is accepted. ASPA only protects you when the ASes in the path publish their ASPA.
+3. Roll out in log-only mode first, as Lesson 5.5 recommends: replace the reject with a tag (BIRD: add a large community when `aspa_check_*` returns `ASPA_INVALID`; OpenBGPD: `match from ebgp avs invalid set { large-community 64500:666:1 }`), redeploy and find the would-be-rejected routes on the customer by that tag.
+
 ## MANRS mapping
 
 | MANRS action | Where the lab exercises it |
@@ -191,6 +220,7 @@ The peer's route 45.20.0.0/16 carries a **fake customer tag** (64500:1:3). It mu
 ```
 common/
   neighbors/     transit, peer, customer, member-a (FRR); rs1, rs2 (BIRD); rpki VRPs
+  aspa/          ASPA lab: transit, peer, customer (FRR); ASPA records and gen-aspa.py
   images/        Dockerfiles for the BIRD, StayRTR, GoBGP and OpenBGPD images
   tests/check.py vendor-neutral checks (Python 3 standard library only)
 labs/<vendor>/

@@ -13,6 +13,7 @@ Usage:
   ./check.py --lab ig-frr                      # all checks
   ./check.py --lab ig-iosxe --communities standard
   ./check.py --lab ig-srlinux --known-gaps ../../labs/srlinux/known-gaps.txt
+  ./check.py --lab ig-aspa-bird --suite aspa
 
 Exit code: 0 if every check passes (known gaps excluded), 1 otherwise.
 Only the Python 3 standard library is used.
@@ -56,6 +57,19 @@ CHECKS = [
     ("LEAK-TRANSIT-TO-PEER", "peer",    "45.10.0.0/16", "absent", "4.4", "transit route leaked to the peer"),
     ("LEAK-TRANSIT-TO-IXP",  "member-a", "45.10.0.0/16", "absent", "4.4", "transit route leaked to the IXP"),
     ("LEAK-PEER-TO-IXP",     "member-a", "45.20.0.0/16", "absent", "4.4", "peer route leaked to the IXP"),
+]
+
+# ASPA lab (labs/aspa-*): route leaks that only path validation catches.
+# ASPA records in common/aspa/rpki/aspa.json; paths in common/aspa/*/frr.conf
+ASPA_CHECKS = [
+    ("A-T-VALID",   "customer", "45.80.0.0/16", "present", "5.5", "from provider, path 64496 65540: ASPA Valid"),
+    ("A-T-VALLEY",  "customer", "45.81.0.0/16", "absent",  "5.5", "from provider, valley in 64496 65541 65542: ASPA Invalid"),
+    ("A-T-UNKNOWN", "customer", "45.82.0.0/16", "present", "5.5", "from provider, no ASPA for 65549/65550: Unknown"),
+    ("A-P-VALID",   "customer", "45.70.0.0/16", "present", "5.5", "from peer, path 64497: ASPA Valid"),
+    ("A-P-LEAK",    "customer", "45.71.0.0/16", "absent",  "5.5", "peer leaks its provider route 64497 65545 65547: Invalid"),
+    ("A-C-VALID",   "transit",  "45.60.0.0/16", "present", "5.5", "from customer, path 64511: ASPA Valid"),
+    ("A-C-LEAK",    "transit",  "45.61.0.0/16", "absent",  "5.5", "customer leaks its other provider 64511 65536 65537: Invalid"),
+    ("A-C-UNKNOWN", "transit",  "45.62.0.0/16", "present", "5.5", "from customer, no ASPA for 65546: Unknown"),
 ]
 
 # Communities expected on routes received by transit (Lesson 4.2)
@@ -102,6 +116,8 @@ def main():
     ap.add_argument("--communities", choices=["large", "standard", "none"], default="large",
                     help="community scheme used by the DUT (IOS XE edition uses standard)")
     ap.add_argument("--known-gaps", help="file with check IDs expected to fail on this platform")
+    ap.add_argument("--suite", choices=["main", "aspa"], default="main",
+                    help="main: the 28 standard checks; aspa: the ASPA lab")
     args = ap.parse_args()
 
     gaps = {}
@@ -112,8 +128,11 @@ def main():
                 if line:
                     gaps[line.split()[0]] = line
 
+    checks = CHECKS if args.suite == "main" else ASPA_CHECKS
+    if args.suite == "aspa":
+        args.communities = "none"
     tables = {}
-    for node in sorted({c[1] for c in CHECKS}):
+    for node in sorted({c[1] for c in checks}):
         try:
             tables[node] = table(args.lab, node)
         except Exception as e:  # noqa: BLE001
@@ -122,7 +141,7 @@ def main():
 
     failed = 0
     print(f"{'RESULT':8} {'CHECK':22} {'LESSON':6} {'AT':9} {'PREFIX':18} DESCRIPTION")
-    for cid, node, prefix, expect, lesson, why in CHECKS:
+    for cid, node, prefix, expect, lesson, why in checks:
         ok = (prefix in tables[node]) == (expect == "present")
         result = "PASS" if ok else ("GAP" if cid in gaps else "FAIL")
         failed += result == "FAIL"

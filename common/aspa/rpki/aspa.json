@@ -1,0 +1,14 @@
+{
+  "metadata": { "buildtime": "2026-01-01T00:00:00Z", "roas": 0, "aspas": 8 },
+  "roas": [],
+  "aspas": [
+    { "customer_asid": 64496, "providers": [65551] },
+    { "customer_asid": 64511, "providers": [64500, 65536] },
+    { "customer_asid": 65536, "providers": [65538] },
+    { "customer_asid": 65537, "providers": [65536] },
+    { "customer_asid": 65540, "providers": [64496] },
+    { "customer_asid": 65541, "providers": [65544] },
+    { "customer_asid": 65542, "providers": [65543] },
+    { "customer_asid": 65545, "providers": [65548] }
+  ]
+}
