@@ -11,7 +11,7 @@ The same 28 checks are designed to run against twelve platforms, so learners can
 | `bird` | BIRD 2.17 | built locally from `common/images/bird` | Validated: 28/28 (containerlab 0.74.3, BIRD 2.17.5) |
 | `gobgp` | GoBGP 4.x | built locally from `common/images/gobgp` | Validated: 28/28 (containerlab 0.74.3, GoBGP 4.10.0) |
 | `openbgpd` | OpenBGPD 8.x (portable; same `bgpd.conf` as on OpenBSD) | built locally from `common/images/openbgpd` | Validated: 28/28 (containerlab 0.74.3, OpenBGPD 8.8) |
-| `vyos` | VyOS (rolling / 1.5+) | built locally from a VyOS ISO (`common/images/vyos/build.sh`) | Available - testing on containerlab |
+| `vyos` | VyOS (rolling / 1.5+) | built locally from a VyOS ISO (`common/images/vyos/build.sh`) | x86_64 only: 28/28 on x86_64 (VyOS rolling 2026.10.07, outside containerlab); does not boot under Rosetta on Apple Silicon |
 | `srlinux` | Nokia SR Linux | `ghcr.io/nokia/srlinux` (public) | Validated: 27/28 + 1 GAP, no ROV (containerlab 0.74.3, SR Linux 26.7.2) |
 | `eos` | Arista cEOS | `ceos` - free download from arista.com | Validated: 28/28 (containerlab 0.74.3, cEOS-lab 4.36.2F arm64) |
 | `routeros` | MikroTik RouterOS v7.20+ | CHR built with [vrnetlab](https://github.com/srl-labs/vrnetlab) | Validated: 28/28 (containerlab 0.74.3, CHR 7.23.8 arm64) |
@@ -51,7 +51,7 @@ curl -sL https://containerlab.dev/setup | sudo -E bash -s "all"   # Docker + con
 sudo usermod -aG docker $USER && exit                            # then: orb -m clab
 ```
 
-On Apple Silicon the container-native labs run (FRR, BIRD, GoBGP, OpenBGPD, SR Linux, cEOS, Junos cRPD), VyOS under Rosetta, and RouterOS, because MikroTik publishes an arm64 CHR. The other VM-based images (IOS XE, IOS XR, SR OS, and vJunos if you want full Junos) need an x86_64 Linux host.
+On Apple Silicon the container-native labs run (FRR, BIRD, GoBGP, OpenBGPD, SR Linux, cEOS, Junos cRPD), and so does RouterOS, because MikroTik publishes an arm64 CHR. VyOS and the other VM-based images (IOS XE, IOS XR, SR OS, and vJunos if you want full Junos) need an x86_64 Linux host.
 
 ```bash
 git clone https://github.com/vitokosk8/interconnection-labs.git
@@ -115,7 +115,7 @@ Without the native base image the build warns `InvalidBaseImagePlatform ... linu
 
 ### VyOS image
 
-VyOS publishes no container image; `common/images/vyos/build.sh` builds one from an ISO. The free nightly (rolling) ISOs are on [github.com/vyos/vyos-nightly-build](https://github.com/vyos/vyos-nightly-build/releases), amd64 only; on Apple Silicon the container runs under Rosetta.
+VyOS publishes no container image; `common/images/vyos/build.sh` builds one from an ISO. The free nightly (rolling) ISOs are on [github.com/vyos/vyos-nightly-build](https://github.com/vyos/vyos-nightly-build/releases), amd64 only. On Apple Silicon the amd64 image does not work under Rosetta: VyOS boots, but its configuration daemon (`vyos-configd`) never receives the requests from `vyshim`, so the boot configuration hangs and every commit fails with "Configuration system temporarily locked". Use an x86_64 Linux host.
 
 ```bash
 sudo apt-get install -y libarchive-tools squashfs-tools

@@ -6,8 +6,9 @@
 #   common/images/vyos/build.sh <vyos.iso | https://...iso> [tag]
 #
 # Free nightly (rolling) ISOs: https://github.com/vyos/vyos-nightly-build/releases
-# They are published for amd64 only; on Apple Silicon the image runs
-# under Rosetta (OrbStack, Docker Desktop).
+# They are published for amd64 only. The image does NOT work under
+# Rosetta on Apple Silicon (vyos-configd never receives the requests
+# from vyshim, so every commit stays locked): use an x86_64 host.
 set -euo pipefail
 SRC="${1:?usage: $0 <vyos.iso|url> [tag]}"
 TAG="${2:-vyos:latest}"
