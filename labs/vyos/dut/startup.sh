@@ -23,5 +23,17 @@ sleep 5
   echo 'save'
   echo 'exit'
 } > /tmp/lab.vbash
-sg vyattacfg -c "/bin/vbash /tmp/lab.vbash" > "$LOG" 2>&1
-grep -q "Commit failed" "$LOG" && echo "LOAD FAILED - see the errors above" >> "$LOG" || echo "lab configuration loaded" >> "$LOG"
+# VyOS may still be applying its own boot configuration ("Configuration
+# system temporarily locked"), much longer under emulation (Rosetta):
+# retry until the commit goes through and the saved config has our AS.
+: > "$LOG"
+for attempt in $(seq 1 30); do
+  echo "=== attempt $attempt" >> "$LOG"
+  sg vyattacfg -c "/bin/vbash /tmp/lab.vbash" >> "$LOG" 2>&1
+  if grep -q "system-as 64500" /config/config.boot 2>/dev/null; then
+    echo "lab configuration loaded" >> "$LOG"
+    exit 0
+  fi
+  sleep 10
+done
+echo "LOAD FAILED - see the errors above" >> "$LOG"
