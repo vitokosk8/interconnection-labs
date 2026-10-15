@@ -13,7 +13,7 @@ The same 28 checks are designed to run against eleven platforms, so learners can
 | `openbgpd` | OpenBGPD 8.x (portable; same `bgpd.conf` as on OpenBSD) | built locally from `common/images/openbgpd` | Validated: 28/28 (containerlab 0.74.3, OpenBGPD 8.8) |
 | `srlinux` | Nokia SR Linux | `ghcr.io/nokia/srlinux` (public) | Validated: 27/28 + 1 GAP, no ROV (containerlab 0.74.3, SR Linux 26.7.2) |
 | `eos` | Arista cEOS | `ceos` - free download from arista.com | Validated: 28/28 (containerlab 0.74.3, cEOS-lab 4.36.2F arm64) |
-| `routeros` | MikroTik RouterOS v7.20+ | CHR built with [vrnetlab](https://github.com/srl-labs/vrnetlab) | Available - testing on containerlab |
+| `routeros` | MikroTik RouterOS v7.20+ | CHR built with [vrnetlab](https://github.com/srl-labs/vrnetlab) | Validated: 28/28 (containerlab 0.74.3, CHR 7.23.8 arm64) |
 | `junos` | Juniper Junos | vJunos-router built with vrnetlab | Planned |
 | `iosxe` | Cisco IOS XE | Catalyst 8000v built with vrnetlab | Planned |
 | `iosxr` | Cisco IOS XR | XRd control-plane (Cisco download) | Planned |
@@ -97,14 +97,18 @@ Check the build after the first deploy: `docker exec clab-ig-eos-dut Cli -c "sho
 RouterOS runs as a virtual machine inside a container built with [vrnetlab](https://github.com/srl-labs/vrnetlab). Download the CHR disk image from [mikrotik.com/download](https://mikrotik.com/download) (stable 7.20 or later): the **arm64 VDI** on Apple Silicon, the **VMDK** on x86_64. Then, inside the Linux VM:
 
 ```bash
-git clone https://github.com/srl-labs/vrnetlab.git
-cp chr-7.*-arm64.vdi vrnetlab/mikrotik/routeros/      # or chr-7.*.vmdk on x86_64
-cd vrnetlab/mikrotik/routeros && make
-docker images | grep mikrotik_routeros                 # note the tag, e.g. 7.20.4-arm64
-docker tag vrnetlab/mikrotik_routeros:7.20.4-arm64 vrnetlab/mikrotik_routeros:latest
+sudo apt-get install -y make
+git clone https://github.com/srl-labs/vrnetlab.git && cd vrnetlab
+# Apple Silicon only: the published vrnetlab base image is amd64-only.
+# Build it natively first, with the tag the RouterOS Dockerfile expects:
+./build-base-image.sh 0.3.0        # check the tag in mikrotik/routeros/docker/Dockerfile
+cp /path/to/chr-7.*-arm64.vdi mikrotik/routeros/      # or chr-7.*.vmdk on x86_64
+cd mikrotik/routeros && make
+docker images | grep mikrotik_routeros                 # e.g. 7.23.8-arm64
+docker tag vrnetlab/mikrotik_routeros:7.23.8-arm64 vrnetlab/mikrotik_routeros:latest
 ```
 
-The VM runs much faster with hardware virtualisation: check `ls /dev/kvm` in the Linux VM (on Apple Silicon this needs an M3 or later). Without it, QEMU emulates the CPU and the router takes a few minutes to boot. Containerlab maps `eth1`-`eth4` to `ether2`-`ether5`; `ether1` is management.
+Without the native base image the build warns `InvalidBaseImagePlatform ... linux/amd64` and produces an image with the wrong QEMU. Hardware virtualisation (`/dev/kvm` in the Linux VM, M3 or later on Apple Silicon) is not required: on an M-series Mac without it, CHR still boots in about 25 seconds under emulation. Containerlab maps `eth1`-`eth4` to `ether2`-`ether5`; `ether1` is management.
 
 ## What is tested
 
