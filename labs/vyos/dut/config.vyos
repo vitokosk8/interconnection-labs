@@ -1,0 +1,380 @@
+# =====================================================================
+# Interconnection Guidelines and Operational Best Practices
+# DUT - VyOS (rolling / 1.5+) - AS64500
+#
+# Lab edition: documentation-space and documentation-ASN filters are
+# disabled (marked PRODUCTION) because the lab itself uses them, and the
+# sessions run without TCP-MD5 (see the README).
+# Loaded by startup.sh in configuration mode, then committed and saved.
+#
+# VyOS renders this into FRR: the policy logic is the same as the FRR
+# lab, written in VyOS syntax (policy ... rule N ...).
+#
+# Large community scheme (Unit 4):
+#   64500:1:1 own  64500:1:2 transit  64500:1:3 customer
+#   64500:1:4 private peer  64500:1:5 IXP route server
+#   64500:10:ASN customer action: do not announce to ASN
+# =====================================================================
+
+# ---- Interfaces (containerlab eth1-eth4; eth0 is management) ----
+set interfaces ethernet eth1 address 198.51.100.2/30
+set interfaces ethernet eth1 description 'TRANSIT-A AS64496'
+set interfaces ethernet eth2 address 198.51.100.10/30
+set interfaces ethernet eth2 description 'PEER AS64497'
+set interfaces ethernet eth3 address 192.0.2.50/24
+set interfaces ethernet eth3 description 'IXP PEERING LAN'
+set interfaces ethernet eth4 address 198.51.100.18/30
+set interfaces ethernet eth4 description 'CUSTOMER AS64511'
+set interfaces ethernet eth1 address 2001:db8:100::2/64
+set interfaces loopback lo address 203.0.113.1/32
+
+# ---- Anti-spoofing on the single-homed customer edge (Lesson 5.6, MANRS NO-2)
+# PRODUCTION: strict uRPF on the customer port
+# set interfaces ethernet eth4 ip source-validation strict
+
+# ---- Own aggregates: blackhole anchors for origination (Lesson 4.3) ----
+set protocols static route 203.0.113.0/24 blackhole
+set protocols static route6 2001:db8:500::/40 blackhole
+# RTBH during an attack (Lesson 6.4):
+# set protocols static route 203.0.113.66/32 blackhole tag 666
+
+# ---- Prefix lists (Lessons 3.2, 3.4) ----
+set policy prefix-list BAD-LENGTH-V4 rule 10 action permit
+set policy prefix-list BAD-LENGTH-V4 rule 10 prefix 0.0.0.0/0
+set policy prefix-list BAD-LENGTH-V4 rule 10 le 7
+set policy prefix-list BAD-LENGTH-V4 rule 20 action permit
+set policy prefix-list BAD-LENGTH-V4 rule 20 prefix 0.0.0.0/0
+set policy prefix-list BAD-LENGTH-V4 rule 20 ge 25
+set policy prefix-list BOGONS-V4 rule 10 action permit
+set policy prefix-list BOGONS-V4 rule 10 prefix 0.0.0.0/8
+set policy prefix-list BOGONS-V4 rule 10 le 32
+set policy prefix-list BOGONS-V4 rule 20 action permit
+set policy prefix-list BOGONS-V4 rule 20 prefix 10.0.0.0/8
+set policy prefix-list BOGONS-V4 rule 20 le 32
+set policy prefix-list BOGONS-V4 rule 30 action permit
+set policy prefix-list BOGONS-V4 rule 30 prefix 100.64.0.0/10
+set policy prefix-list BOGONS-V4 rule 30 le 32
+set policy prefix-list BOGONS-V4 rule 40 action permit
+set policy prefix-list BOGONS-V4 rule 40 prefix 127.0.0.0/8
+set policy prefix-list BOGONS-V4 rule 40 le 32
+set policy prefix-list BOGONS-V4 rule 50 action permit
+set policy prefix-list BOGONS-V4 rule 50 prefix 169.254.0.0/16
+set policy prefix-list BOGONS-V4 rule 50 le 32
+set policy prefix-list BOGONS-V4 rule 60 action permit
+set policy prefix-list BOGONS-V4 rule 60 prefix 172.16.0.0/12
+set policy prefix-list BOGONS-V4 rule 60 le 32
+set policy prefix-list BOGONS-V4 rule 70 action permit
+set policy prefix-list BOGONS-V4 rule 70 prefix 192.0.0.0/24
+set policy prefix-list BOGONS-V4 rule 70 le 32
+set policy prefix-list BOGONS-V4 rule 80 action permit
+set policy prefix-list BOGONS-V4 rule 80 prefix 192.168.0.0/16
+set policy prefix-list BOGONS-V4 rule 80 le 32
+set policy prefix-list BOGONS-V4 rule 90 action permit
+set policy prefix-list BOGONS-V4 rule 90 prefix 198.18.0.0/15
+set policy prefix-list BOGONS-V4 rule 90 le 32
+set policy prefix-list BOGONS-V4 rule 100 action permit
+set policy prefix-list BOGONS-V4 rule 100 prefix 224.0.0.0/4
+set policy prefix-list BOGONS-V4 rule 100 le 32
+set policy prefix-list BOGONS-V4 rule 110 action permit
+set policy prefix-list BOGONS-V4 rule 110 prefix 240.0.0.0/4
+set policy prefix-list BOGONS-V4 rule 110 le 32
+# Documentation space: PRODUCTION only (rule in SANITY-IN disabled below)
+set policy prefix-list DOC-V4 rule 10 action permit
+set policy prefix-list DOC-V4 rule 10 prefix 192.0.2.0/24
+set policy prefix-list DOC-V4 rule 10 le 32
+set policy prefix-list DOC-V4 rule 20 action permit
+set policy prefix-list DOC-V4 rule 20 prefix 198.51.100.0/24
+set policy prefix-list DOC-V4 rule 20 le 32
+set policy prefix-list DOC-V4 rule 30 action permit
+set policy prefix-list DOC-V4 rule 30 prefix 203.0.113.0/24
+set policy prefix-list DOC-V4 rule 30 le 32
+set policy prefix-list OWN-V4 rule 10 action permit
+set policy prefix-list OWN-V4 rule 10 prefix 203.0.113.0/24
+set policy prefix-list OWN-V4 rule 10 le 32
+set policy prefix-list OWN-HOSTS-V4 rule 10 action permit
+set policy prefix-list OWN-HOSTS-V4 rule 10 prefix 203.0.113.0/24
+set policy prefix-list OWN-HOSTS-V4 rule 10 ge 32
+set policy prefix-list IXP-LANS-V4 rule 10 action permit
+set policy prefix-list IXP-LANS-V4 rule 10 prefix 192.0.2.0/24
+set policy prefix-list IXP-LANS-V4 rule 10 le 32
+set policy prefix-list6 BAD-LENGTH-V6 rule 10 action permit
+set policy prefix-list6 BAD-LENGTH-V6 rule 10 prefix ::/0
+set policy prefix-list6 BAD-LENGTH-V6 rule 10 le 15
+set policy prefix-list6 BAD-LENGTH-V6 rule 20 action permit
+set policy prefix-list6 BAD-LENGTH-V6 rule 20 prefix ::/0
+set policy prefix-list6 BAD-LENGTH-V6 rule 20 ge 49
+set policy prefix-list6 BOGONS-V6 rule 10 action permit
+set policy prefix-list6 BOGONS-V6 rule 10 prefix ::/3
+set policy prefix-list6 BOGONS-V6 rule 10 le 128
+set policy prefix-list6 BOGONS-V6 rule 20 action permit
+set policy prefix-list6 BOGONS-V6 rule 20 prefix 4000::/2
+set policy prefix-list6 BOGONS-V6 rule 20 le 128
+set policy prefix-list6 BOGONS-V6 rule 30 action permit
+set policy prefix-list6 BOGONS-V6 rule 30 prefix 8000::/1
+set policy prefix-list6 BOGONS-V6 rule 30 le 128
+set policy prefix-list6 BOGONS-V6 rule 40 action permit
+set policy prefix-list6 BOGONS-V6 rule 40 prefix 2001:2::/48
+set policy prefix-list6 BOGONS-V6 rule 40 le 128
+set policy prefix-list6 BOGONS-V6 rule 50 action permit
+set policy prefix-list6 BOGONS-V6 rule 50 prefix 2001:10::/28
+set policy prefix-list6 BOGONS-V6 rule 50 le 128
+set policy prefix-list6 BOGONS-V6 rule 60 action permit
+set policy prefix-list6 BOGONS-V6 rule 60 prefix 2002::/16
+set policy prefix-list6 BOGONS-V6 rule 60 le 128
+set policy prefix-list6 BOGONS-V6 rule 70 action permit
+set policy prefix-list6 BOGONS-V6 rule 70 prefix 3ffe::/16
+set policy prefix-list6 BOGONS-V6 rule 70 le 128
+set policy prefix-list6 DOC-V6 rule 10 action permit
+set policy prefix-list6 DOC-V6 rule 10 prefix 2001:db8::/32
+set policy prefix-list6 DOC-V6 rule 10 le 128
+set policy prefix-list6 DOC-V6 rule 20 action permit
+set policy prefix-list6 DOC-V6 rule 20 prefix 3fff::/20
+set policy prefix-list6 DOC-V6 rule 20 le 128
+set policy prefix-list6 OWN-V6 rule 10 action permit
+set policy prefix-list6 OWN-V6 rule 10 prefix 2001:db8:500::/40
+set policy prefix-list6 OWN-V6 rule 10 le 128
+# Customer prefix lists: generated, never typed (Lessons 3.5, 7.5)
+#   bgpq4 -4 -A -m 24 -l CUST-AS64511-V4 AS64511:AS-CUSTOMERS, converted to
+#   VyOS rules (bgpq4 has no VyOS output format). PLACEHOLDER entries:
+set policy prefix-list CUST-AS64511-V4 rule 10 action permit
+set policy prefix-list CUST-AS64511-V4 rule 10 prefix 198.51.100.0/24
+set policy prefix-list6 CUST-AS64511-V6 rule 10 action permit
+set policy prefix-list6 CUST-AS64511-V6 rule 10 prefix 2001:db8:6400::/40
+set policy prefix-list6 CUST-AS64511-V6 rule 10 le 48
+
+# ---- AS-path lists (Lessons 3.3, 3.6) ----
+set policy as-path-list BOGON-ASN rule 10 action permit
+set policy as-path-list BOGON-ASN rule 10 regex '_0_'
+set policy as-path-list BOGON-ASN rule 20 action permit
+set policy as-path-list BOGON-ASN rule 20 regex '_23456_'
+set policy as-path-list BOGON-ASN rule 30 action permit
+set policy as-path-list BOGON-ASN rule 30 regex '_(6451[2-9]|645[2-9][0-9]|64[6-9][0-9][0-9]|65[0-4][0-9][0-9]|655[0-2][0-9]|6553[0-5])_'
+set policy as-path-list BOGON-ASN rule 40 action permit
+set policy as-path-list BOGON-ASN rule 40 regex '_(6555[2-9]|655[6-9][0-9]|65[6-9][0-9][0-9]|6[6-9][0-9][0-9][0-9]|[7-9][0-9][0-9][0-9][0-9])_'
+set policy as-path-list BOGON-ASN rule 50 action permit
+set policy as-path-list BOGON-ASN rule 50 regex '_(1[0-2][0-9][0-9][0-9][0-9]|130[0-9][0-9][0-9]|1310[0-6][0-9]|13107[01])_'
+set policy as-path-list BOGON-ASN rule 60 action permit
+set policy as-path-list BOGON-ASN rule 60 regex '_42[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_'
+set policy as-path-list DOC-ASN rule 10 action permit
+set policy as-path-list DOC-ASN rule 10 regex '_(6449[6-9]|6450[0-9]|6451[01])_'
+set policy as-path-list DOC-ASN rule 20 action permit
+set policy as-path-list DOC-ASN rule 20 regex '_(6553[6-9]|6554[0-9]|6555[01])_'
+set policy as-path-list LONG-PATH rule 10 action permit
+set policy as-path-list LONG-PATH rule 10 regex '([0-9]+ ){50}[0-9]+'
+set policy as-path-list TRANSIT-ASN rule 10 action permit
+set policy as-path-list TRANSIT-ASN rule 10 regex '_(174|701|1299|2914|3257|3320|3356|3491|5511|6453|6461|6762|6830|7018|12956)_'
+
+# ---- Community lists (Lessons 3.7, 4.2, 4.6, 7.1) ----
+set policy community-list GSHUT rule 10 action permit
+set policy community-list GSHUT rule 10 regex '65535:0'
+set policy community-list BLACKHOLE rule 10 action permit
+set policy community-list BLACKHOLE rule 10 regex '65535:666'
+set policy large-community-list OWN-INFO rule 10 action permit
+set policy large-community-list OWN-INFO rule 10 regex '64500:1:[1-5]'
+set policy large-community-list TAG-OWN rule 10 action permit
+set policy large-community-list TAG-OWN rule 10 regex '64500:1:1'
+set policy large-community-list TAG-CUST rule 10 action permit
+set policy large-community-list TAG-CUST rule 10 regex '64500:1:3'
+set policy large-community-list DNA-64496 rule 10 action permit
+set policy large-community-list DNA-64496 rule 10 regex '64500:10:64496'
+set policy large-community-list DNA-64497 rule 10 action permit
+set policy large-community-list DNA-64497 rule 10 regex '64500:10:64497'
+set policy large-community-list DNA-64510 rule 10 action permit
+set policy large-community-list DNA-64510 rule 10 regex '64500:10:64510'
+
+# ---- Inbound: SANITY-IN, called from every inbound route-map ----
+set policy route-map SANITY-IN rule 10 action deny
+set policy route-map SANITY-IN rule 10 match ip address prefix-list BAD-LENGTH-V4
+set policy route-map SANITY-IN rule 11 action deny
+set policy route-map SANITY-IN rule 11 match ip address prefix-list BOGONS-V4
+set policy route-map SANITY-IN rule 12 action deny
+set policy route-map SANITY-IN rule 12 match ipv6 address prefix-list BAD-LENGTH-V6
+set policy route-map SANITY-IN rule 13 action deny
+set policy route-map SANITY-IN rule 13 match ipv6 address prefix-list BOGONS-V6
+# PRODUCTION: uncomment
+# set policy route-map SANITY-IN rule 25 action deny
+# set policy route-map SANITY-IN rule 25 match ip address prefix-list DOC-V4
+# set policy route-map SANITY-IN rule 26 action deny
+# set policy route-map SANITY-IN rule 26 match ipv6 address prefix-list DOC-V6
+# set policy route-map SANITY-IN rule 35 action deny
+# set policy route-map SANITY-IN rule 35 match as-path DOC-ASN
+set policy route-map SANITY-IN rule 30 action deny
+set policy route-map SANITY-IN rule 30 match as-path BOGON-ASN
+set policy route-map SANITY-IN rule 40 action deny
+set policy route-map SANITY-IN rule 40 match as-path LONG-PATH
+set policy route-map SANITY-IN rule 50 action deny
+set policy route-map SANITY-IN rule 50 match ip address prefix-list OWN-V4
+set policy route-map SANITY-IN rule 51 action deny
+set policy route-map SANITY-IN rule 51 match ipv6 address prefix-list OWN-V6
+set policy route-map SANITY-IN rule 52 action deny
+set policy route-map SANITY-IN rule 52 match ip address prefix-list IXP-LANS-V4
+set policy route-map SANITY-IN rule 60 action deny
+set policy route-map SANITY-IN rule 60 match rpki invalid
+set policy route-map SANITY-IN rule 100 action permit
+set policy route-map SANITY-IN rule 100 set large-community delete OWN-INFO
+
+# ---- Inbound per relationship (Lessons 3.5, 3.6, 4.2, 7.1) ----
+set policy route-map TRANSIT-IN rule 5 action permit
+set policy route-map TRANSIT-IN rule 5 call SANITY-IN
+set policy route-map TRANSIT-IN rule 5 on-match next
+set policy route-map TRANSIT-IN rule 10 action permit
+set policy route-map TRANSIT-IN rule 10 set local-preference 100
+set policy route-map TRANSIT-IN rule 10 set large-community add 64500:1:2
+set policy route-map TRANSIT-IN rule 10 on-match next
+set policy route-map TRANSIT-IN rule 20 action permit
+set policy route-map TRANSIT-IN rule 20 match community community-list GSHUT
+set policy route-map TRANSIT-IN rule 20 set local-preference 0
+set policy route-map TRANSIT-IN rule 30 action permit
+set policy route-map PEER-IN rule 5 action permit
+set policy route-map PEER-IN rule 5 call SANITY-IN
+set policy route-map PEER-IN rule 5 on-match next
+set policy route-map PEER-IN rule 6 action deny
+set policy route-map PEER-IN rule 6 match as-path TRANSIT-ASN
+set policy route-map PEER-IN rule 10 action permit
+set policy route-map PEER-IN rule 10 set local-preference 250
+set policy route-map PEER-IN rule 10 set large-community add 64500:1:4
+set policy route-map PEER-IN rule 10 on-match next
+set policy route-map PEER-IN rule 20 action permit
+set policy route-map PEER-IN rule 20 match community community-list GSHUT
+set policy route-map PEER-IN rule 20 set local-preference 0
+set policy route-map PEER-IN rule 30 action permit
+set policy route-map IXP-RS-IN rule 5 action permit
+set policy route-map IXP-RS-IN rule 5 call SANITY-IN
+set policy route-map IXP-RS-IN rule 5 on-match next
+set policy route-map IXP-RS-IN rule 6 action deny
+set policy route-map IXP-RS-IN rule 6 match as-path TRANSIT-ASN
+set policy route-map IXP-RS-IN rule 10 action permit
+set policy route-map IXP-RS-IN rule 10 set local-preference 200
+set policy route-map IXP-RS-IN rule 10 set large-community add 64500:1:5
+set policy route-map IXP-RS-IN rule 10 on-match next
+set policy route-map IXP-RS-IN rule 20 action permit
+set policy route-map IXP-RS-IN rule 20 match community community-list GSHUT
+set policy route-map IXP-RS-IN rule 20 set local-preference 0
+set policy route-map IXP-RS-IN rule 30 action permit
+# Customer: only prefixes in the IRR-generated lists (MANRS NO-1)
+set policy route-map CUST-AS64511-IN rule 5 action permit
+set policy route-map CUST-AS64511-IN rule 5 call SANITY-IN
+set policy route-map CUST-AS64511-IN rule 5 on-match next
+set policy route-map CUST-AS64511-IN rule 6 action deny
+set policy route-map CUST-AS64511-IN rule 6 match as-path TRANSIT-ASN
+set policy route-map CUST-AS64511-IN rule 10 action permit
+set policy route-map CUST-AS64511-IN rule 10 match ip address prefix-list CUST-AS64511-V4
+set policy route-map CUST-AS64511-IN rule 10 set local-preference 300
+set policy route-map CUST-AS64511-IN rule 10 set large-community add 64500:1:3
+set policy route-map CUST-AS64511-IN rule 10 on-match goto 20
+set policy route-map CUST-AS64511-IN rule 11 action permit
+set policy route-map CUST-AS64511-IN rule 11 match ipv6 address prefix-list CUST-AS64511-V6
+set policy route-map CUST-AS64511-IN rule 11 set local-preference 300
+set policy route-map CUST-AS64511-IN rule 11 set large-community add 64500:1:3
+set policy route-map CUST-AS64511-IN rule 11 on-match goto 20
+set policy route-map CUST-AS64511-IN rule 15 action deny
+set policy route-map CUST-AS64511-IN rule 20 action permit
+set policy route-map CUST-AS64511-IN rule 20 match community community-list GSHUT
+set policy route-map CUST-AS64511-IN rule 20 set local-preference 0
+set policy route-map CUST-AS64511-IN rule 30 action permit
+
+# ---- Origination and outbound (Lessons 4.3, 4.4, 4.6, 6.4) ----
+set policy route-map ORIGINATE rule 10 action permit
+set policy route-map ORIGINATE rule 10 set large-community add 64500:1:1
+set policy route-map RTBH-ORIGINATE rule 10 action permit
+set policy route-map RTBH-ORIGINATE rule 10 match tag 666
+set policy route-map RTBH-ORIGINATE rule 10 match ip address prefix-list OWN-HOSTS-V4
+set policy route-map RTBH-ORIGINATE rule 10 set community add blackhole
+set policy route-map RTBH-ORIGINATE rule 10 set community add no-export
+set policy route-map RTBH-ORIGINATE rule 10 set large-community add 64500:1:1
+set policy route-map UPSTREAM-OUT rule 10 action permit
+set policy route-map UPSTREAM-OUT rule 10 match community community-list BLACKHOLE
+set policy route-map UPSTREAM-OUT rule 10 match ip address prefix-list OWN-HOSTS-V4
+set policy route-map UPSTREAM-OUT rule 15 action deny
+set policy route-map UPSTREAM-OUT rule 15 match community community-list BLACKHOLE
+set policy route-map UPSTREAM-OUT rule 20 action permit
+set policy route-map UPSTREAM-OUT rule 20 match large-community large-community-list TAG-OWN
+set policy route-map UPSTREAM-OUT rule 30 action permit
+set policy route-map UPSTREAM-OUT rule 30 match large-community large-community-list TAG-CUST
+# anything else: implicit deny - never export transit or peer routes (MANRS NO-1)
+set policy route-map TO-64496 rule 5 action deny
+set policy route-map TO-64496 rule 5 match large-community large-community-list DNA-64496
+set policy route-map TO-64496 rule 10 action permit
+set policy route-map TO-64496 rule 10 call UPSTREAM-OUT
+set policy route-map TO-64497 rule 5 action deny
+set policy route-map TO-64497 rule 5 match large-community large-community-list DNA-64497
+set policy route-map TO-64497 rule 10 action permit
+set policy route-map TO-64497 rule 10 call UPSTREAM-OUT
+set policy route-map TO-64510 rule 5 action deny
+set policy route-map TO-64510 rule 5 match large-community large-community-list DNA-64510
+set policy route-map TO-64510 rule 10 action permit
+set policy route-map TO-64510 rule 10 call UPSTREAM-OUT
+set policy route-map CUSTOMER-OUT rule 10 action permit
+
+# ---- RPKI (Lesson 5.2, MANRS NO-4) ----
+set protocols rpki polling-period 30
+set protocols rpki cache 192.0.2.53 port 3323
+set protocols rpki cache 192.0.2.53 preference 1
+set protocols rpki cache 192.0.2.54 port 3323
+set protocols rpki cache 192.0.2.54 preference 2
+
+# ---- BGP (Lessons 2.1-2.5, 4.5, 6.1) ----
+# GTSM: ttl-security hops 1. RFC 9234 roles: local-role.
+# Lab: no TCP-MD5 (see README). Production: neighbor X password KEY (Lesson 2.2)
+set protocols bgp system-as 64500
+set protocols bgp parameters router-id 203.0.113.1
+set protocols bgp parameters log-neighbor-changes
+set protocols bgp parameters ebgp-requires-policy
+set protocols bgp address-family ipv4-unicast network 203.0.113.0/24 route-map ORIGINATE
+set protocols bgp address-family ipv4-unicast redistribute static route-map RTBH-ORIGINATE
+set protocols bgp address-family ipv6-unicast network 2001:db8:500::/40 route-map ORIGINATE
+set protocols bgp neighbor 198.51.100.1 remote-as 64496
+set protocols bgp neighbor 198.51.100.1 description 'TRANSIT-A'
+set protocols bgp neighbor 198.51.100.1 ttl-security hops 1
+set protocols bgp neighbor 198.51.100.1 local-role customer
+set protocols bgp neighbor 198.51.100.1 address-family ipv4-unicast route-map import TRANSIT-IN
+set protocols bgp neighbor 198.51.100.1 address-family ipv4-unicast route-map export TO-64496
+set protocols bgp neighbor 198.51.100.1 address-family ipv4-unicast maximum-prefix 1100000
+set protocols bgp neighbor 198.51.100.1 address-family ipv4-unicast soft-reconfiguration inbound
+set protocols bgp neighbor 2001:db8:100::1 remote-as 64496
+set protocols bgp neighbor 2001:db8:100::1 description 'TRANSIT-A-V6'
+set protocols bgp neighbor 2001:db8:100::1 ttl-security hops 1
+set protocols bgp neighbor 2001:db8:100::1 local-role customer
+set protocols bgp neighbor 2001:db8:100::1 address-family ipv6-unicast route-map import TRANSIT-IN
+set protocols bgp neighbor 2001:db8:100::1 address-family ipv6-unicast route-map export TO-64496
+set protocols bgp neighbor 2001:db8:100::1 address-family ipv6-unicast maximum-prefix 250000
+set protocols bgp neighbor 2001:db8:100::1 address-family ipv6-unicast soft-reconfiguration inbound
+set protocols bgp neighbor 198.51.100.9 remote-as 64497
+set protocols bgp neighbor 198.51.100.9 description 'PEER-AS64497'
+set protocols bgp neighbor 198.51.100.9 ttl-security hops 1
+set protocols bgp neighbor 198.51.100.9 local-role peer
+set protocols bgp neighbor 198.51.100.9 address-family ipv4-unicast route-map import PEER-IN
+set protocols bgp neighbor 198.51.100.9 address-family ipv4-unicast route-map export TO-64497
+set protocols bgp neighbor 198.51.100.9 address-family ipv4-unicast maximum-prefix 1200
+set protocols bgp neighbor 198.51.100.9 address-family ipv4-unicast soft-reconfiguration inbound
+set protocols bgp neighbor 192.0.2.1 remote-as 64510
+set protocols bgp neighbor 192.0.2.1 description 'IXP-RS1'
+set protocols bgp neighbor 192.0.2.1 ttl-security hops 1
+set protocols bgp neighbor 192.0.2.1 local-role rs-client
+set protocols bgp neighbor 192.0.2.1 address-family ipv4-unicast route-map import IXP-RS-IN
+set protocols bgp neighbor 192.0.2.1 address-family ipv4-unicast route-map export TO-64510
+set protocols bgp neighbor 192.0.2.1 address-family ipv4-unicast maximum-prefix 250000
+set protocols bgp neighbor 192.0.2.1 address-family ipv4-unicast soft-reconfiguration inbound
+# the route server does not prepend its ASN (RFC 7947): FRR does not enforce the first AS unless told to
+set protocols bgp neighbor 192.0.2.2 remote-as 64510
+set protocols bgp neighbor 192.0.2.2 description 'IXP-RS2'
+set protocols bgp neighbor 192.0.2.2 ttl-security hops 1
+set protocols bgp neighbor 192.0.2.2 local-role rs-client
+set protocols bgp neighbor 192.0.2.2 address-family ipv4-unicast route-map import IXP-RS-IN
+set protocols bgp neighbor 192.0.2.2 address-family ipv4-unicast route-map export TO-64510
+set protocols bgp neighbor 192.0.2.2 address-family ipv4-unicast maximum-prefix 250000
+set protocols bgp neighbor 192.0.2.2 address-family ipv4-unicast soft-reconfiguration inbound
+# the route server does not prepend its ASN (RFC 7947): FRR does not enforce the first AS unless told to
+set protocols bgp neighbor 198.51.100.17 remote-as 64511
+set protocols bgp neighbor 198.51.100.17 description 'CUST-AS64511'
+set protocols bgp neighbor 198.51.100.17 ttl-security hops 1
+set protocols bgp neighbor 198.51.100.17 local-role provider
+set protocols bgp neighbor 198.51.100.17 address-family ipv4-unicast route-map import CUST-AS64511-IN
+set protocols bgp neighbor 198.51.100.17 address-family ipv4-unicast route-map export CUSTOMER-OUT
+set protocols bgp neighbor 198.51.100.17 address-family ipv4-unicast maximum-prefix 50
+set protocols bgp neighbor 198.51.100.17 address-family ipv4-unicast soft-reconfiguration inbound
+
+# Maintenance (Lesson 7.1): drain a session with GRACEFUL_SHUTDOWN, e.g.
+#   set policy route-map TO-64496 rule 1 action permit
+#   set policy route-map TO-64496 rule 1 set community add graceful-shutdown
+#   set policy route-map TO-64496 rule 1 on-match next

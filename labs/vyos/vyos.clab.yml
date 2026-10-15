@@ -1,0 +1,100 @@
+# =====================================================================
+# Interconnection Guidelines lab - DUT: VyOS
+#
+#            transit AS64496          peer AS64497
+#                  | eth1                  | eth2
+#                  +---------- DUT --------+
+#                       AS64500 (VyOS)
+#                  +--------+--------------+
+#              eth3|                       | eth4
+#   ===== IXP LAN 192.0.2.0/24 (br-ixp) =====   customer AS64511
+#    |       |         |        |       |
+#   rs1     rs2    member-a   rpki1   rpki2
+#  AS64510 AS64510 AS64499    RTR     RTR
+#
+# Deploy:  ../../scripts/deploy.sh vyos     (creates br-ixp, builds images)
+# Test:    ../../common/tests/check.py --lab ig-vyos
+# =====================================================================
+name: ig-vyos
+
+topology:
+  defaults:
+    kind: linux
+
+  nodes:
+    dut:
+      # Plain Linux container booting VyOS with systemd; the configuration
+      # (set commands) is applied by startup.sh once VyOS has booted.
+      image: ${VYOS_IMAGE:=vyos:latest}
+      cmd: /sbin/init
+      binds:
+        - /lib/modules:/lib/modules:ro
+        - dut/config.vyos:/root/lab/config.vyos:ro
+        - dut/startup.sh:/root/lab/startup.sh:ro
+      exec:
+        - bash -c "setsid nohup bash /root/lab/startup.sh >/dev/null 2>&1 &"
+
+    # ---- common neighbors (identical in every lab) --------------------
+    transit:
+      image: ${FRR_IMAGE:=quay.io/frrouting/frr:10.2.1}
+      binds:
+        - ../../common/neighbors/transit/frr.conf:/etc/frr/frr.conf
+        - ../../common/neighbors/daemons:/etc/frr/daemons
+        - ../../common/neighbors/vtysh.conf:/etc/frr/vtysh.conf
+    peer:
+      image: ${FRR_IMAGE:=quay.io/frrouting/frr:10.2.1}
+      binds:
+        - ../../common/neighbors/peer/frr.conf:/etc/frr/frr.conf
+        - ../../common/neighbors/daemons:/etc/frr/daemons
+        - ../../common/neighbors/vtysh.conf:/etc/frr/vtysh.conf
+    customer:
+      image: ${FRR_IMAGE:=quay.io/frrouting/frr:10.2.1}
+      binds:
+        - ../../common/neighbors/customer/frr.conf:/etc/frr/frr.conf
+        - ../../common/neighbors/daemons:/etc/frr/daemons
+        - ../../common/neighbors/vtysh.conf:/etc/frr/vtysh.conf
+    member-a:
+      image: ${FRR_IMAGE:=quay.io/frrouting/frr:10.2.1}
+      binds:
+        - ../../common/neighbors/member-a/frr.conf:/etc/frr/frr.conf
+        - ../../common/neighbors/daemons:/etc/frr/daemons
+        - ../../common/neighbors/vtysh.conf:/etc/frr/vtysh.conf
+    rs1:
+      image: ${BIRD_IMAGE:=ig/bird:latest}
+      binds:
+        - ../../common/neighbors/rs1/bird.conf:/etc/bird/bird.conf
+      exec:
+        - ip addr add 192.0.2.1/24 dev eth1
+    rs2:
+      image: ${BIRD_IMAGE:=ig/bird:latest}
+      binds:
+        - ../../common/neighbors/rs2/bird.conf:/etc/bird/bird.conf
+      exec:
+        - ip addr add 192.0.2.2/24 dev eth1
+    rpki1:
+      image: ${RPKI_IMAGE:=ig/rpki:latest}
+      binds:
+        - ../../common/neighbors/rpki/vrps.json:/etc/stayrtr/vrps.json
+      exec:
+        - ip addr add 192.0.2.53/24 dev eth1
+        - ip route add 203.0.113.0/24 via 192.0.2.50
+    rpki2:
+      image: ${RPKI_IMAGE:=ig/rpki:latest}
+      binds:
+        - ../../common/neighbors/rpki/vrps.json:/etc/stayrtr/vrps.json
+      exec:
+        - ip addr add 192.0.2.54/24 dev eth1
+        - ip route add 203.0.113.0/24 via 192.0.2.50
+    br-ixp:
+      kind: bridge
+
+  links:
+    - endpoints: ["dut:eth1", "transit:eth1"]
+    - endpoints: ["dut:eth2", "peer:eth1"]
+    - endpoints: ["dut:eth3", "br-ixp:ixp-dut"]
+    - endpoints: ["dut:eth4", "customer:eth1"]
+    - endpoints: ["rs1:eth1", "br-ixp:ixp-rs1"]
+    - endpoints: ["rs2:eth1", "br-ixp:ixp-rs2"]
+    - endpoints: ["member-a:eth1", "br-ixp:ixp-member-a"]
+    - endpoints: ["rpki1:eth1", "br-ixp:ixp-rpki1"]
+    - endpoints: ["rpki2:eth1", "br-ixp:ixp-rpki2"]

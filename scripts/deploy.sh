@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy one lab:  scripts/deploy.sh <frr|bird|gobgp|openbgpd|routeros|iosxr|iosxe|sros|srlinux|junos|eos>
+# Deploy one lab:  scripts/deploy.sh <frr|bird|gobgp|openbgpd|vyos|routeros|iosxr|iosxe|sros|srlinux|junos|eos>
 set -euo pipefail
 cd "$(dirname "$0")/.."
 VENDOR="${1:?usage: $0 <vendor>}"
@@ -28,6 +28,14 @@ if [ "$VENDOR" = eos ]; then
   fi
 fi
 
+if [ "$VENDOR" = vyos ]; then
+  IMG="${VYOS_IMAGE:-vyos:latest}"
+  if ! docker image inspect "$IMG" >/dev/null 2>&1; then
+    echo "VyOS image '$IMG' not found. Build it from a VyOS ISO, for example:"
+    echo "  common/images/vyos/build.sh https://github.com/vyos/vyos-nightly-build/releases/download/<tag>/vyos-<tag>-generic-amd64.iso"
+    exit 1
+  fi
+fi
 if [ "$VENDOR" = junos ]; then
   IMG="${CRPD_IMAGE:-crpd:latest}"
   if ! docker image inspect "$IMG" >/dev/null 2>&1; then
@@ -64,7 +72,7 @@ fi
 # sudo drops the environment on many systems (sudo -E is often refused),
 # so pass the image overrides to containerlab explicitly.
 ENV_PASS=()
-for v in FRR_IMAGE BIRD_IMAGE RPKI_IMAGE GOBGP_IMAGE OPENBGPD_IMAGE CRPD_IMAGE SRL_IMAGE CEOS_IMAGE ROS_IMAGE XRD_IMAGE \
+for v in FRR_IMAGE BIRD_IMAGE RPKI_IMAGE GOBGP_IMAGE OPENBGPD_IMAGE VYOS_IMAGE CRPD_IMAGE SRL_IMAGE CEOS_IMAGE ROS_IMAGE XRD_IMAGE \
          C8KV_IMAGE SROS_IMAGE SROS_LICENSE VJUNOS_IMAGE; do
   [ -n "${!v:-}" ] && ENV_PASS+=("$v=${!v}")
 done

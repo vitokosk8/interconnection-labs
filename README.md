@@ -3,7 +3,7 @@
 Hands-on labs for the course **Interconnection Guidelines and Operational Best Practices**.
 Every lab puts one router under test (the **DUT**, AS64500) in the same neighbourhood: a transit provider, a private peer, an IXP with two route servers, a customer and two RPKI validators. The neighbours announce legitimate routes **and trap routes** (bogons, RPKI Invalids, leaks, more-specifics of your own space…). A vendor-neutral script then checks what the DUT accepted and what it announced.
 
-The same 28 checks are designed to run against eleven platforms, so learners can compare how each vendor implements the same MANRS-aligned policy.
+The same 28 checks are designed to run against twelve platforms, so learners can compare how each vendor implements the same MANRS-aligned policy.
 
 | Lab | DUT | Image | Status |
 | --- | --- | --- | --- |
@@ -11,6 +11,7 @@ The same 28 checks are designed to run against eleven platforms, so learners can
 | `bird` | BIRD 2.17 | built locally from `common/images/bird` | Validated: 28/28 (containerlab 0.74.3, BIRD 2.17.5) |
 | `gobgp` | GoBGP 4.x | built locally from `common/images/gobgp` | Validated: 28/28 (containerlab 0.74.3, GoBGP 4.10.0) |
 | `openbgpd` | OpenBGPD 8.x (portable; same `bgpd.conf` as on OpenBSD) | built locally from `common/images/openbgpd` | Validated: 28/28 (containerlab 0.74.3, OpenBGPD 8.8) |
+| `vyos` | VyOS (rolling / 1.5+) | built locally from a VyOS ISO (`common/images/vyos/build.sh`) | Available - testing on containerlab |
 | `srlinux` | Nokia SR Linux | `ghcr.io/nokia/srlinux` (public) | Validated: 27/28 + 1 GAP, no ROV (containerlab 0.74.3, SR Linux 26.7.2) |
 | `eos` | Arista cEOS | `ceos` - free download from arista.com | Validated: 28/28 (containerlab 0.74.3, cEOS-lab 4.36.2F arm64) |
 | `routeros` | MikroTik RouterOS v7.20+ | CHR built with [vrnetlab](https://github.com/srl-labs/vrnetlab) | Validated: 28/28 (containerlab 0.74.3, CHR 7.23.8 arm64) |
@@ -50,7 +51,7 @@ curl -sL https://containerlab.dev/setup | sudo -E bash -s "all"   # Docker + con
 sudo usermod -aG docker $USER && exit                            # then: orb -m clab
 ```
 
-On Apple Silicon the container-native labs run (FRR, BIRD, GoBGP, OpenBGPD, SR Linux, cEOS, Junos cRPD), and so does RouterOS, because MikroTik publishes an arm64 CHR. The other VM-based images (IOS XE, IOS XR, SR OS, and vJunos if you want full Junos) need an x86_64 Linux host.
+On Apple Silicon the container-native labs run (FRR, BIRD, GoBGP, OpenBGPD, SR Linux, cEOS, Junos cRPD), VyOS under Rosetta, and RouterOS, because MikroTik publishes an arm64 CHR. The other VM-based images (IOS XE, IOS XR, SR OS, and vJunos if you want full Junos) need an x86_64 Linux host.
 
 ```bash
 git clone https://github.com/vitokosk8/interconnection-labs.git
@@ -75,6 +76,7 @@ FRR_IMAGE=quay.io/frrouting/frr:10.3.1 scripts/deploy.sh frr
 | `FRR_IMAGE` | `quay.io/frrouting/frr:10.2.1` |
 | `BIRD_IMAGE` / `RPKI_IMAGE` | `ig/bird:latest` / `ig/rpki:latest` (built by `deploy.sh`) |
 | `ROS_IMAGE` | `vrnetlab/mikrotik_routeros:latest` - build it yourself, see below |
+| `VYOS_IMAGE` | `vyos:latest` - build it yourself, see below |
 | `CRPD_IMAGE` | `crpd:latest` - load it yourself, see below |
 | `CEOS_IMAGE` | `ceos:latest` - import it yourself, see below |
 | `OPENBGPD_IMAGE` | `ig/openbgpd:latest` (built by `deploy.sh openbgpd`, Debian package) |
@@ -110,6 +112,18 @@ docker tag vrnetlab/mikrotik_routeros:7.23.8-arm64 vrnetlab/mikrotik_routeros:la
 ```
 
 Without the native base image the build warns `InvalidBaseImagePlatform ... linux/amd64` and produces an image with the wrong QEMU. Hardware virtualisation (`/dev/kvm` in the Linux VM, M3 or later on Apple Silicon) is not required: on an M-series Mac without it, CHR still boots in about 25 seconds under emulation. Containerlab maps `eth1`-`eth4` to `ether2`-`ether5`; `ether1` is management.
+
+### VyOS image
+
+VyOS publishes no container image; `common/images/vyos/build.sh` builds one from an ISO. The free nightly (rolling) ISOs are on [github.com/vyos/vyos-nightly-build](https://github.com/vyos/vyos-nightly-build/releases), amd64 only; on Apple Silicon the container runs under Rosetta.
+
+```bash
+sudo apt-get install -y libarchive-tools squashfs-tools
+common/images/vyos/build.sh https://github.com/vyos/vyos-nightly-build/releases/download/2026.10.07-0712-rolling/vyos-2026.10.07-0712-rolling-generic-amd64.iso
+scripts/deploy.sh vyos
+```
+
+VyOS boots with systemd, then `labs/vyos/dut/startup.sh` applies the set commands in `config.vyos`, commits and saves (about two minutes; result in `/tmp/lab-load.log` inside the container). VyOS renders the configuration into FRR, so `vtysh` works inside the container too.
 
 ### Juniper cRPD image
 
