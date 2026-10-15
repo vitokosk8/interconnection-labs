@@ -14,7 +14,7 @@ The same 28 checks are designed to run against eleven platforms, so learners can
 | `srlinux` | Nokia SR Linux | `ghcr.io/nokia/srlinux` (public) | Validated: 27/28 + 1 GAP, no ROV (containerlab 0.74.3, SR Linux 26.7.2) |
 | `eos` | Arista cEOS | `ceos` - free download from arista.com | Validated: 28/28 (containerlab 0.74.3, cEOS-lab 4.36.2F arm64) |
 | `routeros` | MikroTik RouterOS v7.20+ | CHR built with [vrnetlab](https://github.com/srl-labs/vrnetlab) | Validated: 28/28 (containerlab 0.74.3, CHR 7.23.8 arm64) |
-| `junos` | Juniper Junos | vJunos-router built with vrnetlab | Planned |
+| `junos` | Juniper Junos (cRPD, the Junos routing engine in a container) | `crpd` - download from juniper.net | Available - testing on containerlab |
 | `iosxe` | Cisco IOS XE | Catalyst 8000v built with vrnetlab | Planned |
 | `iosxr` | Cisco IOS XR | XRd control-plane (Cisco download) | Planned |
 | `sros` | Nokia SR OS (MD-CLI) | vSIM built with vrnetlab + licence | Planned |
@@ -50,7 +50,7 @@ curl -sL https://containerlab.dev/setup | sudo -E bash -s "all"   # Docker + con
 sudo usermod -aG docker $USER && exit                            # then: orb -m clab
 ```
 
-On Apple Silicon the container-native labs run (FRR, BIRD, GoBGP, OpenBGPD, SR Linux, cEOS), and so does RouterOS, because MikroTik publishes an arm64 CHR. The other VM-based images (IOS XE, IOS XR, Junos, SR OS) need an x86_64 Linux host.
+On Apple Silicon the container-native labs run (FRR, BIRD, GoBGP, OpenBGPD, SR Linux, cEOS, Junos cRPD), and so does RouterOS, because MikroTik publishes an arm64 CHR. The other VM-based images (IOS XE, IOS XR, SR OS, and vJunos if you want full Junos) need an x86_64 Linux host.
 
 ```bash
 git clone https://github.com/vitokosk8/interconnection-labs.git
@@ -75,6 +75,7 @@ FRR_IMAGE=quay.io/frrouting/frr:10.3.1 scripts/deploy.sh frr
 | `FRR_IMAGE` | `quay.io/frrouting/frr:10.2.1` |
 | `BIRD_IMAGE` / `RPKI_IMAGE` | `ig/bird:latest` / `ig/rpki:latest` (built by `deploy.sh`) |
 | `ROS_IMAGE` | `vrnetlab/mikrotik_routeros:latest` - build it yourself, see below |
+| `CRPD_IMAGE` | `crpd:latest` - load it yourself, see below |
 | `CEOS_IMAGE` | `ceos:latest` - import it yourself, see below |
 | `OPENBGPD_IMAGE` | `ig/openbgpd:latest` (built by `deploy.sh openbgpd`, Debian package) |
 | `GOBGP_IMAGE` | `ig/gobgp:latest` (built by `deploy.sh gobgp`, GoBGP 4.10.0) |
@@ -109,6 +110,18 @@ docker tag vrnetlab/mikrotik_routeros:7.23.8-arm64 vrnetlab/mikrotik_routeros:la
 ```
 
 Without the native base image the build warns `InvalidBaseImagePlatform ... linux/amd64` and produces an image with the wrong QEMU. Hardware virtualisation (`/dev/kvm` in the Linux VM, M3 or later on Apple Silicon) is not required: on an M-series Mac without it, CHR still boots in about 25 seconds under emulation. Containerlab maps `eth1`-`eth4` to `ether2`-`ether5`; `ether1` is management.
+
+### Juniper cRPD image
+
+The `junos` lab uses cRPD: the Junos routing daemon and CLI in a container (arm64 and amd64), with the same `policy-options` and `protocols bgp` configuration as an MX or vJunos. It has no dataplane features (interfaces, firewall filters, uRPF); those parts of the configuration are in the reference configuration. Download cRPD from juniper.net (a free trial is available), then:
+
+```bash
+docker load -i junos-routing-crpd-docker-*.tgz
+docker images | grep crpd                              # e.g. crpd:25.2R1.9
+docker tag crpd:25.2R1.9 crpd:latest
+```
+
+The configuration (`labs/junos/dut/config.set`, set format) is loaded by `startup.sh` once the Junos management daemon is up, about a minute after deploy; the result is in `/tmp/lab-load.log` inside the container. If you have a licence file, uncomment `license:` in `junos.clab.yml`.
 
 ## What is tested
 

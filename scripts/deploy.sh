@@ -28,6 +28,15 @@ if [ "$VENDOR" = eos ]; then
   fi
 fi
 
+if [ "$VENDOR" = junos ]; then
+  IMG="${CRPD_IMAGE:-crpd:latest}"
+  if ! docker image inspect "$IMG" >/dev/null 2>&1; then
+    echo "cRPD image '$IMG' not found. Download cRPD from juniper.net (arm64 build on"
+    echo "Apple Silicon), then:  docker load -i junos-routing-crpd-*.tgz"
+    echo "and tag it:            docker tag crpd:<version> $IMG"
+    exit 1
+  fi
+fi
 if [ "$VENDOR" = routeros ]; then
   IMG="${ROS_IMAGE:-vrnetlab/mikrotik_routeros:latest}"
   if ! docker image inspect "$IMG" >/dev/null 2>&1; then
@@ -55,7 +64,7 @@ fi
 # sudo drops the environment on many systems (sudo -E is often refused),
 # so pass the image overrides to containerlab explicitly.
 ENV_PASS=()
-for v in FRR_IMAGE BIRD_IMAGE RPKI_IMAGE GOBGP_IMAGE OPENBGPD_IMAGE SRL_IMAGE CEOS_IMAGE ROS_IMAGE XRD_IMAGE \
+for v in FRR_IMAGE BIRD_IMAGE RPKI_IMAGE GOBGP_IMAGE OPENBGPD_IMAGE CRPD_IMAGE SRL_IMAGE CEOS_IMAGE ROS_IMAGE XRD_IMAGE \
          C8KV_IMAGE SROS_IMAGE SROS_LICENSE VJUNOS_IMAGE; do
   [ -n "${!v:-}" ] && ENV_PASS+=("$v=${!v}")
 done

@@ -1,0 +1,326 @@
+#=====================================================================
+# LAB EDITION - adapted from the reference configuration for the containerlab topology:
+#   - DUT is cRPD (Junos routing engine in a container, runs on ARM64):
+#     no interfaces, firewall filters or uRPF here, see sections 1-3
+#   - no TCP-MD5 / TCP-AO and no BFD (container kernels, FRR neighbours)
+#   - otc-local-role commented out (needs Junos 25.2R1+)
+#   - documentation-space terms stay commented (the lab uses that space)
+#   - loaded by startup.sh with "load set" (comment lines are stripped)
+#=====================================================================
+#=====================================================================
+# Interconnection Guidelines and Operational Best Practices
+# Reference configuration - Juniper Junos OS (set format)
+#
+# DOCUMENTATION-ONLY RESOURCES (RFC 5737 / RFC 3849 / RFC 5398).
+# Adapt before use. Validate in a lab (vMX / vJunos-router) first.
+# Load with:  configure private  ->  load set terminal  ->  show | compare
+#             ->  commit check  ->  commit confirmed 10  ->  commit
+#
+# Topology (same as the other reference configurations)
+#   AS64500 (us)        own: 203.0.113.0/24, 2001:db8:500::/40
+#   ge-0/0/0  Transit A AS64496  198.51.100.1 / 2001:db8:100::1
+#   ge-0/0/1  Peer      AS64497  198.51.100.9
+#   ge-0/0/2  IXP LAN 192.0.2.0/24, us .50, RS1 .1 / RS2 .2 (AS64510)
+#   ge-0/0/3  Customer  AS64511  198.51.100.17, as-set AS64511:AS-CUSTOMERS
+#
+# Large community scheme (Unit 4)
+#   64500:1:1 own  64500:1:2 transit  64500:1:3 customer
+#   64500:1:4 private peer  64500:1:5 IXP route server
+#   64500:10:ASN customer action: do not announce to ASN
+#
+# Junos notes
+#   - Without "defaults ebgp no-policy" (Junos 20.3R1+) eBGP accepts
+#     and advertises everything by default; it is set below (RFC 8212).
+#   - Import/export are policy CHAINS. The BGP default at the end of an
+#     import chain is ACCEPT, so every chain ends with an explicit
+#     accept or reject.
+#   - "ttl 255" only sets the outgoing TTL. Incoming TTL 255 (the other
+#     half of GTSM) is checked by the lo0 filter in section 3.
+#   - BGP Roles (RFC 9234): Junos 25.2R1 and later, "otc-local-role".
+#   - ASPA: not configured here; check your release notes.
+#=====================================================================
+
+#---------------------------------------------------------------------
+# 1-3. Interfaces, TCP-AO key chain, lo0 protection filter
+#   Not in cRPD: it is only the routing engine. Interface addresses are
+#   set in Linux by containerlab (see junos.clab.yml). On MX / vJunos
+#   take sections 1-3 from the reference configuration: interface
+#   addresses, uRPF (MANRS NO-2), TCP-AO, and the lo0 filter that also
+#   checks incoming TTL 255 (the receive half of GTSM).
+#---------------------------------------------------------------------
+
+#---------------------------------------------------------------------
+# 4. Own prefixes: discard routes as origination anchors (Lesson 4.3)
+#    RTBH trigger routes are tagged 666 (Lesson 6.4)
+#---------------------------------------------------------------------
+set routing-options router-id 203.0.113.1
+set routing-options autonomous-system 64500
+set routing-options static route 203.0.113.0/24 discard
+set routing-options rib inet6.0 static route 2001:db8:500::/40 discard
+# RTBH during an attack:
+# set routing-options static route 203.0.113.66/32 discard tag 666
+
+#---------------------------------------------------------------------
+# 5. RPKI validators over RTR (Lesson 5.2)
+#---------------------------------------------------------------------
+set routing-options validation group RPKI session 192.0.2.53 port 3323
+set routing-options validation group RPKI session 192.0.2.53 local-address 203.0.113.1
+set routing-options validation group RPKI session 192.0.2.54 port 3323
+set routing-options validation group RPKI session 192.0.2.54 local-address 203.0.113.1
+
+#---------------------------------------------------------------------
+# 6. Policy objects (Lessons 3.2-3.7, 4.2)
+#---------------------------------------------------------------------
+set policy-options route-filter-list BOGONS-V4 0.0.0.0/8 orlonger
+set policy-options route-filter-list BOGONS-V4 10.0.0.0/8 orlonger
+set policy-options route-filter-list BOGONS-V4 100.64.0.0/10 orlonger
+set policy-options route-filter-list BOGONS-V4 127.0.0.0/8 orlonger
+set policy-options route-filter-list BOGONS-V4 169.254.0.0/16 orlonger
+set policy-options route-filter-list BOGONS-V4 172.16.0.0/12 orlonger
+set policy-options route-filter-list BOGONS-V4 192.0.0.0/24 orlonger
+set policy-options route-filter-list BOGONS-V4 192.168.0.0/16 orlonger
+set policy-options route-filter-list BOGONS-V4 198.18.0.0/15 orlonger
+set policy-options route-filter-list BOGONS-V4 224.0.0.0/4 orlonger
+set policy-options route-filter-list BOGONS-V4 240.0.0.0/4 orlonger
+set policy-options route-filter-list BOGONS-V6 ::/3 orlonger
+set policy-options route-filter-list BOGONS-V6 4000::/2 orlonger
+set policy-options route-filter-list BOGONS-V6 8000::/1 orlonger
+set policy-options route-filter-list BOGONS-V6 2001:2::/48 orlonger
+set policy-options route-filter-list BOGONS-V6 2001:10::/28 orlonger
+set policy-options route-filter-list BOGONS-V6 2002::/16 orlonger
+set policy-options route-filter-list BOGONS-V6 3ffe::/16 orlonger
+
+set policy-options route-filter-list BAD-LENGTH-V4 0.0.0.0/0 prefix-length-range /0-/7
+set policy-options route-filter-list BAD-LENGTH-V4 0.0.0.0/0 prefix-length-range /25-/32
+set policy-options route-filter-list BAD-LENGTH-V6 ::/0 prefix-length-range /0-/15
+set policy-options route-filter-list BAD-LENGTH-V6 ::/0 prefix-length-range /49-/128
+
+# Documentation space - kept apart because the lab uses it.
+# PRODUCTION: un-comment term DOC in SANITY-IN.
+set policy-options route-filter-list DOC-V4 192.0.2.0/24 orlonger
+set policy-options route-filter-list DOC-V4 198.51.100.0/24 orlonger
+set policy-options route-filter-list DOC-V4 203.0.113.0/24 orlonger
+set policy-options route-filter-list DOC-V6 2001:db8::/32 orlonger
+set policy-options route-filter-list DOC-V6 3fff::/20 orlonger
+
+set policy-options route-filter-list OWN-V4 203.0.113.0/24 orlonger
+set policy-options route-filter-list OWN-V6 2001:db8:500::/40 orlonger
+set policy-options route-filter-list IXP-LANS-V4 192.0.2.0/24 orlonger
+
+# Customer prefix lists: generated, never typed (Lessons 3.5, 7.5)
+#   bgpq4 -J -z -4 -A -m 24 -l CUST-AS64511-V4 AS64511:AS-CUSTOMERS
+#   bgpq4 -J -z -6 -A -m 48 -l CUST-AS64511-V6 AS64511:AS-CUSTOMERS
+# PLACEHOLDER entries - replace with the bgpq4 output
+set policy-options route-filter-list CUST-AS64511-V4 198.51.100.0/24 exact
+set policy-options route-filter-list CUST-AS64511-V6 2001:db8:6400::/40 upto /48
+
+# AS paths (Lessons 3.3, 3.6)
+set policy-options as-path-group BOGON-ASNS as-path ZERO ".* 0 .*"
+set policy-options as-path-group BOGON-ASNS as-path AS-TRANS ".* 23456 .*"
+set policy-options as-path-group BOGON-ASNS as-path PRIVATE-16 ".* [64512-65534] .*"
+set policy-options as-path-group BOGON-ASNS as-path LAST-16 ".* 65535 .*"
+set policy-options as-path-group BOGON-ASNS as-path RESERVED ".* [65552-131071] .*"
+set policy-options as-path-group BOGON-ASNS as-path PRIVATE-32 ".* [4200000000-4294967294] .*"
+set policy-options as-path-group BOGON-ASNS as-path LAST-32 ".* 4294967295 .*"
+# Documentation ASNs (RFC 5398). PRODUCTION: un-comment term DOC-ASN.
+set policy-options as-path-group DOC-ASNS as-path DOC-16 ".* [64496-64511] .*"
+set policy-options as-path-group DOC-ASNS as-path DOC-32 ".* [65536-65551] .*"
+set policy-options as-path TOO-LONG ".{51,}"
+set policy-options as-path TRANSIT-ASNS ".* (174|701|1299|2914|3257|3320|3356|3491|5511|6453|6461|6762|6830|7018|12956) .*"
+
+# Communities
+set policy-options community BLACKHOLE members 65535:666
+set policy-options community NO-EXPORT members no-export
+set policy-options community OWN-INFO members "large:64500:1:[1-5]"
+set policy-options community TAG-OWN members large:64500:1:1
+set policy-options community TAG-TRANSIT members large:64500:1:2
+set policy-options community TAG-CUST members large:64500:1:3
+set policy-options community TAG-PEER members large:64500:1:4
+set policy-options community TAG-RS members large:64500:1:5
+set policy-options community DNA-64496 members large:64500:10:64496
+set policy-options community DNA-64497 members large:64500:10:64497
+set policy-options community DNA-64510 members large:64500:10:64510
+
+#---------------------------------------------------------------------
+# 7. Inbound policies (Lessons 3.1-3.7, 4.2, 5.2)
+#    import chain: SANITY-IN, NO-TRANSIT-ASN (not transit), session policy
+#    GRACEFUL_SHUTDOWN is honoured by "graceful-shutdown receiver".
+#---------------------------------------------------------------------
+set policy-options policy-statement SANITY-IN term BAD-LENGTH from route-filter-list BAD-LENGTH-V4
+set policy-options policy-statement SANITY-IN term BAD-LENGTH from route-filter-list BAD-LENGTH-V6
+set policy-options policy-statement SANITY-IN term BAD-LENGTH then reject
+set policy-options policy-statement SANITY-IN term BOGONS from route-filter-list BOGONS-V4
+set policy-options policy-statement SANITY-IN term BOGONS from route-filter-list BOGONS-V6
+set policy-options policy-statement SANITY-IN term BOGONS then reject
+# PRODUCTION: un-comment
+# set policy-options policy-statement SANITY-IN term DOC from route-filter-list DOC-V4
+# set policy-options policy-statement SANITY-IN term DOC from route-filter-list DOC-V6
+# set policy-options policy-statement SANITY-IN term DOC then reject
+set policy-options policy-statement SANITY-IN term BOGON-ASN from as-path-group BOGON-ASNS
+set policy-options policy-statement SANITY-IN term BOGON-ASN then reject
+# PRODUCTION: un-comment
+# set policy-options policy-statement SANITY-IN term DOC-ASN from as-path-group DOC-ASNS
+# set policy-options policy-statement SANITY-IN term DOC-ASN then reject
+set policy-options policy-statement SANITY-IN term LONG-PATH from as-path TOO-LONG
+set policy-options policy-statement SANITY-IN term LONG-PATH then reject
+set policy-options policy-statement SANITY-IN term OWN-AND-IXP from route-filter-list OWN-V4
+set policy-options policy-statement SANITY-IN term OWN-AND-IXP from route-filter-list OWN-V6
+set policy-options policy-statement SANITY-IN term OWN-AND-IXP from route-filter-list IXP-LANS-V4
+set policy-options policy-statement SANITY-IN term OWN-AND-IXP then reject
+set policy-options policy-statement SANITY-IN term RPKI-INVALID from protocol bgp
+set policy-options policy-statement SANITY-IN term RPKI-INVALID from validation-database invalid
+set policy-options policy-statement SANITY-IN term RPKI-INVALID then validation-state invalid
+set policy-options policy-statement SANITY-IN term RPKI-INVALID then reject
+set policy-options policy-statement SANITY-IN term SCRUB then community delete OWN-INFO
+set policy-options policy-statement SANITY-IN term SCRUB then next policy
+
+set policy-options policy-statement NO-TRANSIT-ASN term TRANSIT from as-path TRANSIT-ASNS
+set policy-options policy-statement NO-TRANSIT-ASN term TRANSIT then reject
+set policy-options policy-statement NO-TRANSIT-ASN then next policy
+
+set policy-options policy-statement TRANSIT-IN then local-preference 100
+set policy-options policy-statement TRANSIT-IN then community add TAG-TRANSIT
+set policy-options policy-statement TRANSIT-IN then accept
+
+set policy-options policy-statement PEER-IN then local-preference 250
+set policy-options policy-statement PEER-IN then community add TAG-PEER
+set policy-options policy-statement PEER-IN then accept
+
+set policy-options policy-statement IXP-RS-IN then local-preference 200
+set policy-options policy-statement IXP-RS-IN then community add TAG-RS
+set policy-options policy-statement IXP-RS-IN then accept
+
+# Customer: only prefixes in the IRR-generated lists (MANRS NO-1)
+set policy-options policy-statement CUST-AS64511-IN term IRR from route-filter-list CUST-AS64511-V4
+set policy-options policy-statement CUST-AS64511-IN term IRR from route-filter-list CUST-AS64511-V6
+set policy-options policy-statement CUST-AS64511-IN term IRR then local-preference 300
+set policy-options policy-statement CUST-AS64511-IN term IRR then community add TAG-CUST
+set policy-options policy-statement CUST-AS64511-IN term IRR then accept
+set policy-options policy-statement CUST-AS64511-IN then reject
+
+#---------------------------------------------------------------------
+# 8. Outbound policies (Lessons 4.3, 4.4, 4.6, 6.4)
+#    export chain: DNA-ASN UPSTREAM-OUT
+#---------------------------------------------------------------------
+set policy-options policy-statement DNA-64496 term DNA from community DNA-64496
+set policy-options policy-statement DNA-64496 term DNA then reject
+set policy-options policy-statement DNA-64496 then next policy
+set policy-options policy-statement DNA-64497 term DNA from community DNA-64497
+set policy-options policy-statement DNA-64497 term DNA then reject
+set policy-options policy-statement DNA-64497 then next policy
+set policy-options policy-statement DNA-64510 term DNA from community DNA-64510
+set policy-options policy-statement DNA-64510 term DNA then reject
+set policy-options policy-statement DNA-64510 then next policy
+
+# RTBH: own host routes only (RFC 7999)
+set policy-options policy-statement UPSTREAM-OUT term RTBH from protocol static
+set policy-options policy-statement UPSTREAM-OUT term RTBH from tag 666
+set policy-options policy-statement UPSTREAM-OUT term RTBH from route-filter 203.0.113.0/24 prefix-length-range /32-/32
+set policy-options policy-statement UPSTREAM-OUT term RTBH then community add BLACKHOLE
+set policy-options policy-statement UPSTREAM-OUT term RTBH then community add NO-EXPORT
+set policy-options policy-statement UPSTREAM-OUT term RTBH then community add TAG-OWN
+set policy-options policy-statement UPSTREAM-OUT term RTBH then accept
+# Own aggregates, originated from discard static routes
+set policy-options policy-statement UPSTREAM-OUT term OWN from protocol static
+set policy-options policy-statement UPSTREAM-OUT term OWN from route-filter 203.0.113.0/24 exact
+set policy-options policy-statement UPSTREAM-OUT term OWN from route-filter 2001:db8:500::/40 exact
+set policy-options policy-statement UPSTREAM-OUT term OWN then community add TAG-OWN
+set policy-options policy-statement UPSTREAM-OUT term OWN then accept
+# Customer routes
+set policy-options policy-statement UPSTREAM-OUT term CUSTOMER from protocol bgp
+set policy-options policy-statement UPSTREAM-OUT term CUSTOMER from community TAG-CUST
+set policy-options policy-statement UPSTREAM-OUT term CUSTOMER then accept
+# Never export transit or peer routes (MANRS NO-1)
+set policy-options policy-statement UPSTREAM-OUT then reject
+
+set policy-options policy-statement CUSTOMER-OUT term OWN from protocol static
+set policy-options policy-statement CUSTOMER-OUT term OWN from route-filter 203.0.113.0/24 exact
+set policy-options policy-statement CUSTOMER-OUT term OWN from route-filter 2001:db8:500::/40 exact
+set policy-options policy-statement CUSTOMER-OUT term OWN then accept
+set policy-options policy-statement CUSTOMER-OUT term BGP from protocol bgp
+set policy-options policy-statement CUSTOMER-OUT term BGP then accept
+set policy-options policy-statement CUSTOMER-OUT then reject
+
+#---------------------------------------------------------------------
+# 9. BGP (Lessons 2.1-2.4, 4.5, 6.1, 7.1)
+#---------------------------------------------------------------------
+# RFC 8212 (Junos 20.3R1+)
+set protocols bgp defaults ebgp no-policy receive reject-always
+set protocols bgp defaults ebgp no-policy advertise reject-always
+# Honour GRACEFUL_SHUTDOWN (RFC 8326): local-preference 0 on 65535:0
+set protocols bgp graceful-shutdown receiver
+set protocols bgp log-updown
+
+set protocols bgp group TRANSIT type external
+set protocols bgp group TRANSIT peer-as 64496
+set protocols bgp group TRANSIT ttl 255
+set protocols bgp group TRANSIT import [ SANITY-IN TRANSIT-IN ]
+set protocols bgp group TRANSIT export [ DNA-64496 UPSTREAM-OUT ]
+# lab: no TCP-MD5. Production: set protocols bgp group TRANSIT authentication-key KEY (or TCP-AO, Lesson 2.2)
+# Full table: high limit, log only (no teardown)
+set protocols bgp group TRANSIT family inet unicast prefix-limit maximum 1100000
+set protocols bgp group TRANSIT family inet6 unicast prefix-limit maximum 250000
+# lab: needs Junos 25.2R1+, enable if your image supports it
+# set protocols bgp group TRANSIT otc-local-role customer
+set protocols bgp group TRANSIT neighbor 198.51.100.1 description TRANSIT-A
+set protocols bgp group TRANSIT neighbor 198.51.100.1 local-address 198.51.100.2
+set protocols bgp group TRANSIT neighbor 2001:db8:100::1 description TRANSIT-A-V6
+set protocols bgp group TRANSIT neighbor 2001:db8:100::1 local-address 2001:db8:100::2
+
+set protocols bgp group PEER-AS64497 type external
+set protocols bgp group PEER-AS64497 peer-as 64497
+set protocols bgp group PEER-AS64497 ttl 255
+set protocols bgp group PEER-AS64497 import [ SANITY-IN NO-TRANSIT-ASN PEER-IN ]
+set protocols bgp group PEER-AS64497 export [ DNA-64497 UPSTREAM-OUT ]
+# lab: no TCP-MD5. Production: set protocols bgp group PEER-AS64497 authentication-key KEY (or TCP-AO, Lesson 2.2)
+# PeeringDB count + 20 %, tear down at the limit, retry after 30 min
+set protocols bgp group PEER-AS64497 family inet unicast prefix-limit maximum 1200
+set protocols bgp group PEER-AS64497 family inet unicast prefix-limit teardown 90
+set protocols bgp group PEER-AS64497 family inet unicast prefix-limit teardown idle-timeout 30
+# lab: needs Junos 25.2R1+, enable if your image supports it
+# set protocols bgp group PEER-AS64497 otc-local-role peer
+set protocols bgp group PEER-AS64497 neighbor 198.51.100.9 description PEER-AS64497
+set protocols bgp group PEER-AS64497 neighbor 198.51.100.9 local-address 198.51.100.10
+
+set protocols bgp group IXP-RS type external
+set protocols bgp group IXP-RS peer-as 64510
+set protocols bgp group IXP-RS ttl 255
+set protocols bgp group IXP-RS import [ SANITY-IN NO-TRANSIT-ASN IXP-RS-IN ]
+set protocols bgp group IXP-RS export [ DNA-64510 UPSTREAM-OUT ]
+set protocols bgp group IXP-RS family inet unicast prefix-limit maximum 250000
+set protocols bgp group IXP-RS family inet unicast prefix-limit teardown 90
+set protocols bgp group IXP-RS family inet unicast prefix-limit teardown idle-timeout 30
+set protocols bgp group IXP-RS neighbor 192.0.2.1 description IXP-RS1
+set protocols bgp group IXP-RS neighbor 192.0.2.1 local-address 192.0.2.50
+set protocols bgp group IXP-RS neighbor 192.0.2.2 description IXP-RS2
+set protocols bgp group IXP-RS neighbor 192.0.2.2 local-address 192.0.2.50
+
+set protocols bgp group CUST-AS64511 type external
+set protocols bgp group CUST-AS64511 peer-as 64511
+set protocols bgp group CUST-AS64511 ttl 255
+set protocols bgp group CUST-AS64511 import [ SANITY-IN NO-TRANSIT-ASN CUST-AS64511-IN ]
+set protocols bgp group CUST-AS64511 export CUSTOMER-OUT
+# lab: no TCP-MD5. Production: set protocols bgp group CUST-AS64511 authentication-key KEY (or TCP-AO, Lesson 2.2)
+# Size of the generated prefix list + margin
+set protocols bgp group CUST-AS64511 family inet unicast prefix-limit maximum 50
+set protocols bgp group CUST-AS64511 family inet unicast prefix-limit teardown 90
+set protocols bgp group CUST-AS64511 family inet unicast prefix-limit teardown idle-timeout 30
+# lab: needs Junos 25.2R1+, enable if your image supports it
+# set protocols bgp group CUST-AS64511 otc-local-role provider
+set protocols bgp group CUST-AS64511 neighbor 198.51.100.17 description CUST-AS64511
+set protocols bgp group CUST-AS64511 neighbor 198.51.100.17 local-address 198.51.100.18
+
+#---------------------------------------------------------------------
+# Notes
+#---------------------------------------------------------------------
+# Maintenance (Lesson 7.1) - drain transit A before the window:
+#   set protocols bgp group TRANSIT graceful-shutdown sender local-preference 0
+#   ... wait for traffic to move, then shut the session, then delete
+#   the statement after the work.
+#
+# Checks:
+#   show bgp summary
+#   show route advertising-protocol bgp 198.51.100.1
+#   show route receive-protocol bgp 198.51.100.9 hidden
+#   show validation session
+#   show validation statistics
