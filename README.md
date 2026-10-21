@@ -35,7 +35,7 @@ The same policy and the same 28 checks run on many platforms, so you can compare
 | :-: | --- | --- | --- | --- |
 | ✅ | `frr` | FRRouting 10.2.1 | public (`quay.io/frrouting/frr`) | 28/28 |
 | ✅ | `bird` | BIRD 2.17.5 | built by `deploy.sh` | 28/28 |
-| 🔬 | `bird3` | BIRD 3.4.0 (multi-threaded) | built from source by `deploy.sh bird3` | 28/28 outside containerlab |
+| ✅ | `bird3` | BIRD 3.4.0 (multi-threaded) | built from source by `deploy.sh bird3` | 28/28 |
 | ✅ | `gobgp` | GoBGP 4.10.0 | built by `deploy.sh` | 28/28 |
 | ✅ | `openbgpd` | OpenBGPD 8.8 (portable, same `bgpd.conf` as OpenBSD) | built by `deploy.sh` | 28/28 |
 | ✅ | `srlinux` | Nokia SR Linux 26.7.2 | public (`ghcr.io/nokia/srlinux`) | 27/28 + 1 gap (no ROV) |

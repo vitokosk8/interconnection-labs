@@ -20,7 +20,7 @@ topology:
       image: ${BIRD3_IMAGE:=ig/bird3:latest}
       binds:
         - dut/bird.conf:/etc/bird/bird.conf
-        - ../../common/aspa/rpki/aspa-bird3.conf:/etc/bird/aspa.conf
+        - ../../common/aspa/rpki/aspa-bird.conf:/etc/bird/aspa.conf
       exec:
         - ip addr add 198.51.100.2/30 dev eth1
         - ip addr add 198.51.100.10/30 dev eth2
