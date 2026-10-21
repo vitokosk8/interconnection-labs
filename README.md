@@ -29,7 +29,7 @@ The same policy and the same 28 checks run on many platforms, so you can compare
 
 ## Platforms
 
-✅ validated on containerlab  ·  🔬 passes outside containerlab, awaiting a containerlab run  ·  🧪 ready, waiting for an image  ·  💻 x86_64 hosts only  ·  🗓️ planned
+✅ validated on containerlab  ·  🧪 ready, waiting for an image  ·  💻 x86_64 hosts only  ·  🗓️ planned
 
 | | Lab | Router under test | Image | Result |
 | :-: | --- | --- | --- | --- |
@@ -52,7 +52,7 @@ Two smaller labs focus on **ASPA**, path validation against route leaks, on the 
 | | Lab | Router under test | Result |
 | :-: | --- | --- | --- |
 | ✅ | `aspa-bird` | BIRD 2.17.5 | 8/8 |
-| 🔬 | `aspa-bird3` | BIRD 3.4.0 | 8/8 outside containerlab |
+| ✅ | `aspa-bird3` | BIRD 3.4.0 | 8/8 |
 | ✅ | `aspa-openbgpd` | OpenBGPD 8.8 | 8/8 |
 
 Every result above comes from a real run on containerlab 0.74.3 (on an Apple Silicon Mac with OrbStack), except VyOS. A lab is only marked ✅ once it passes there.
