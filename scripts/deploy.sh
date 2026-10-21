@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy one lab:  scripts/deploy.sh <frr|bird|gobgp|openbgpd|vyos|aspa-bird|aspa-openbgpd|routeros|iosxr|iosxe|sros|srlinux|junos|eos>
+# Deploy one lab:  scripts/deploy.sh <frr|bird|bird3|gobgp|openbgpd|vyos|aspa-bird|aspa-bird3|aspa-openbgpd|routeros|iosxr|iosxe|sros|srlinux|junos|eos>
 set -euo pipefail
 cd "$(dirname "$0")/.."
 VENDOR="${1:?usage: $0 <vendor>}"
@@ -10,6 +10,9 @@ command -v containerlab >/dev/null || { echo "containerlab not found: https://co
 # 1. Lab images for the route servers, the RTR validators (and the GoBGP / OpenBGPD DUTs)
 docker image inspect "${BIRD_IMAGE:-ig/bird:latest}" >/dev/null 2>&1 || docker build -t ig/bird:latest common/images/bird
 docker image inspect "${RPKI_IMAGE:-ig/rpki:latest}" >/dev/null 2>&1 || docker build -t ig/rpki:latest common/images/rpki
+if [ "$VENDOR" = bird3 ] || [ "$VENDOR" = aspa-bird3 ]; then
+  docker image inspect "${BIRD3_IMAGE:-ig/bird3:latest}" >/dev/null 2>&1 || docker build -t ig/bird3:latest common/images/bird3
+fi
 if [ "$VENDOR" = openbgpd ] || [ "$VENDOR" = aspa-openbgpd ]; then
   docker image inspect "${OPENBGPD_IMAGE:-ig/openbgpd:latest}" >/dev/null 2>&1 || docker build -t ig/openbgpd:latest common/images/openbgpd
 fi
@@ -72,7 +75,7 @@ fi
 # sudo drops the environment on many systems (sudo -E is often refused),
 # so pass the image overrides to containerlab explicitly.
 ENV_PASS=()
-for v in FRR_IMAGE BIRD_IMAGE RPKI_IMAGE GOBGP_IMAGE OPENBGPD_IMAGE VYOS_IMAGE CRPD_IMAGE SRL_IMAGE CEOS_IMAGE ROS_IMAGE XRD_IMAGE \
+for v in FRR_IMAGE BIRD_IMAGE RPKI_IMAGE BIRD3_IMAGE GOBGP_IMAGE OPENBGPD_IMAGE VYOS_IMAGE CRPD_IMAGE SRL_IMAGE CEOS_IMAGE ROS_IMAGE XRD_IMAGE \
          C8KV_IMAGE SROS_IMAGE SROS_LICENSE VJUNOS_IMAGE; do
   [ -n "${!v:-}" ] && ENV_PASS+=("$v=${!v}")
 done

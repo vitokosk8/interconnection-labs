@@ -29,12 +29,13 @@ The same policy and the same 28 checks run on many platforms, so you can compare
 
 ## Platforms
 
-✅ validated on containerlab  ·  🧪 ready, waiting for an image  ·  💻 x86_64 hosts only  ·  🗓️ planned
+✅ validated on containerlab  ·  🔬 passes outside containerlab, awaiting a containerlab run  ·  🧪 ready, waiting for an image  ·  💻 x86_64 hosts only  ·  🗓️ planned
 
 | | Lab | Router under test | Image | Result |
 | :-: | --- | --- | --- | --- |
 | ✅ | `frr` | FRRouting 10.2.1 | public (`quay.io/frrouting/frr`) | 28/28 |
 | ✅ | `bird` | BIRD 2.17.5 | built by `deploy.sh` | 28/28 |
+| 🔬 | `bird3` | BIRD 3.4.0 (multi-threaded) | built from source by `deploy.sh bird3` | 28/28 outside containerlab |
 | ✅ | `gobgp` | GoBGP 4.10.0 | built by `deploy.sh` | 28/28 |
 | ✅ | `openbgpd` | OpenBGPD 8.8 (portable, same `bgpd.conf` as OpenBSD) | built by `deploy.sh` | 28/28 |
 | ✅ | `srlinux` | Nokia SR Linux 26.7.2 | public (`ghcr.io/nokia/srlinux`) | 27/28 + 1 gap (no ROV) |
@@ -46,11 +47,12 @@ The same policy and the same 28 checks run on many platforms, so you can compare
 | 🗓️ | `iosxr` | Cisco IOS XR (XRd) | Cisco.com account | planned |
 | 🗓️ | `sros` | Nokia SR OS (MD-CLI) | vSIM + licence | planned |
 
-Two smaller labs focus on **ASPA**, path validation against route leaks, on the two platforms that implement it:
+Two smaller labs focus on **ASPA**, path validation against route leaks, on the platforms that implement it:
 
 | | Lab | Router under test | Result |
 | :-: | --- | --- | --- |
 | ✅ | `aspa-bird` | BIRD 2.17.5 | 8/8 |
+| 🔬 | `aspa-bird3` | BIRD 3.4.0 | 8/8 outside containerlab |
 | ✅ | `aspa-openbgpd` | OpenBGPD 8.8 | 8/8 |
 
 Every result above comes from a real run on containerlab 0.74.3 (on an Apple Silicon Mac with OrbStack), except VyOS. A lab is only marked ✅ once it passes there.
@@ -111,6 +113,7 @@ A few things worth knowing:
 | --- | --- |
 | `FRR_IMAGE` | `quay.io/frrouting/frr:10.2.1` |
 | `BIRD_IMAGE` / `RPKI_IMAGE` | `ig/bird:latest` / `ig/rpki:latest`, built by `deploy.sh` |
+| `BIRD3_IMAGE` | `ig/bird3:latest`, built from source by `deploy.sh bird3` (BIRD 3.4.0) |
 | `GOBGP_IMAGE` | `ig/gobgp:latest`, built by `deploy.sh gobgp` |
 | `OPENBGPD_IMAGE` | `ig/openbgpd:latest`, built by `deploy.sh openbgpd` |
 | `SRL_IMAGE` | `ghcr.io/nokia/srlinux:26.7.2` |
@@ -245,7 +248,7 @@ ROV checks who originated a route. A leak keeps the legitimate origin, so ROV ca
 - **From a customer or a peer** (upstream verification), every hop must go *up*, from a customer to one of its providers.
 - **From a provider** (downstream verification), the path may go up once and then down: no valleys.
 
-The `aspa-bird` and `aspa-openbgpd` labs use a reduced topology (transit, peer, customer) with their own neighbours in `common/aspa/`:
+The `aspa-bird`, `aspa-bird3` and `aspa-openbgpd` labs use a reduced topology (transit, peer, customer) with their own neighbours in `common/aspa/`:
 
 | Check | Seen at | Route | AS path received | ASPA says | Expected |
 | --- | --- | --- | --- | --- | :-: |
@@ -331,6 +334,12 @@ The FRR neighbours send TTL 255 (`ebgp-multihop 255`) and accept any TTL, so the
 <summary><b>RPKI timing and RTR versions</b></summary>
 
 StayRTR 0.6 only speaks RTR version 1 unless started with `-protocol 2`. BIRD 2.17 offers version 2 first, is refused, and reconnects with version 1 on its next retry, so the first sync can take a minute (`retry keep 10` keeps it short). GoBGP does not re-run its import policy when ROAs arrive late, hence its `startup.sh`. OpenBGPD retries an unreachable validator only every 600 s and has no setting for it, hence its `start.sh`.
+</details>
+
+<details>
+<summary><b>BIRD 2 and BIRD 3</b></summary>
+
+BIRD 3 reads BIRD 2 configurations almost unchanged: the `bird3` lab uses the `bird` policy with two cosmetic fixes BIRD 3 warns about (a function now declares its return type with `-> bool`, and the template is no longer called `ebgp`, which is a keyword in BIRD 3). The difference is underneath: every protocol and table runs in its own thread, which matters on route servers with thousands of sessions. Distribution packages lag behind BIRD releases, so `common/images/bird3` builds the exact release from source, on amd64 and arm64.
 </details>
 
 <details>
